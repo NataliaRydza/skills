@@ -2,10 +2,11 @@
 
 Installable AI skills for building Jigx solutions.
 
-This repository contains two separate skills:
+This repository contains three separate skills:
 
 - `jigx` - generic Jigx Core SDK app-building recipes.
 - `jigx-acumatica` - Acumatica-specific integration recipes for Jigx apps.
+- `jigx-ux` - generic UX rules for Jigx screens, actions, messages and edit flows.
 
 The skills are intentionally split so generic Jigx guidance can remain reusable while
 Acumatica conventions, endpoint rules, sync behavior, and ERP-specific payload shapes
@@ -16,19 +17,19 @@ stay isolated.
 Install these skills with the Vercel Labs `skills` CLI:
 
 ```sh
-npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --agent claude-code --agent codex --global
+npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --skill jigx-ux --agent claude-code --agent codex --global
 ```
 
 Use the non-interactive shorthand when scripting installs:
 
 ```sh
-npx skills add jigx-com/skills -s jigx -s jigx-acumatica -a claude-code -a codex -g -y
+npx skills add jigx-com/skills -s jigx -s jigx-acumatica -s jigx-ux -a claude-code -a codex -g -y
 ```
 
 If the repository is private or you prefer SSH, use the Git URL:
 
 ```sh
-npx skills add git@github.com:jigx-com/skills.git --skill jigx --skill jigx-acumatica --agent claude-code --agent codex --global
+npx skills add git@github.com:jigx-com/skills.git --skill jigx --skill jigx-acumatica --skill jigx-ux --agent claude-code --agent codex --global
 ```
 
 ### Install For One Agent
@@ -36,13 +37,13 @@ npx skills add git@github.com:jigx-com/skills.git --skill jigx --skill jigx-acum
 Claude Code only:
 
 ```sh
-npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --agent claude-code --global
+npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --skill jigx-ux --agent claude-code --global
 ```
 
 Codex only:
 
 ```sh
-npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --agent codex --global
+npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --skill jigx-ux --agent codex --global
 ```
 
 ### Project-Local Install
@@ -50,7 +51,7 @@ npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --agent codex
 Run this from the project repository when the skills should apply only to that project:
 
 ```sh
-npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --agent claude-code --agent codex
+npx skills add jigx-com/skills --skill jigx --skill jigx-acumatica --skill jigx-ux --agent claude-code --agent codex
 ```
 
 Project-local installs are useful when a repository needs pinned skill content checked
@@ -69,6 +70,7 @@ Update installed skills from this repository:
 ```sh
 npx skills update jigx
 npx skills update jigx-acumatica
+npx skills update jigx-ux
 ```
 
 Remove installed skills:
@@ -76,6 +78,7 @@ Remove installed skills:
 ```sh
 npx skills remove jigx
 npx skills remove jigx-acumatica
+npx skills remove jigx-ux
 ```
 
 ## Install Locations
@@ -100,6 +103,13 @@ REST/OData functions, `acuerp` tokens, `acumaticaURL` casing, lookup expands,
 local-first sync, command queue retry, file upload, PDF attachment, and service order
 submission patterns.
 
+Use `jigx-ux` together with `jigx` whenever a change affects what the user sees or
+does: screens and home hubs, record workspaces, lists and tabular data, forms and
+field choice, actions and labels, messages and confirmations, offline and sync state,
+Save/Discard behaviour, colours, icons and accessibility. It includes domain
+playbooks for field service, time tracking, sales and order entry, project hubs,
+expenses and approvals, plus a UX review procedure for existing solutions.
+
 ## Verify generated solutions
 
 The Jigx skill includes a dependency-free checker for known mobile runtime
@@ -114,6 +124,43 @@ The checker exits nonzero on errors and reports warnings separately. It catches
 undeclared state, hidden action groups, SQL binding mistakes, and local REST
 context/pagination errors. It does not validate live business data or prove that
 a device submission succeeded.
+
+For UX, run the heuristic lint over the solution source (the folder containing
+`index.jigx`):
+
+```sh
+node skills/jigx-ux/scripts/ux-lint.mjs /path/to/solution --text
+node --test skills/jigx-ux/scripts/ux-lint.test.mjs
+```
+
+Check icon names against the current Tabler outline set. The check reuses the
+[icon-migration](https://github.com/jigx-com/icon-migration) skill, which must be
+installed, and writes nothing:
+
+```sh
+node skills/jigx-ux/scripts/check-icons.mjs /path/to/solution
+node --test skills/jigx-ux/scripts/check-icons.test.mjs
+```
+
+When it reports old Streamline names, run `/icon-migration` in the solution folder
+(or ask your agent to migrate the icons), review the picks on the page it opens,
+delete the `.icon-migration` folder, then publish.
+
+For a UX review, draft a list of proposed changes for the solution owner to
+approve before anything is implemented:
+
+```sh
+node skills/jigx-ux/scripts/propose.mjs /path/to/solution   # writes ux-proposals.md
+```
+
+The owner ticks **Approve** under each proposal (or replies with IDs such as
+"approve P1, P3-P5"). Only approved proposals are implemented, and each one gets a
+status (done, rejected, needs decision, owner action).
+
+The UX lint flags review prompts such as destructive swipes without a confirm, screens
+without titles, discard warnings switched off, "waiting to sync" coloured as an
+error, generic error copy and hard-coded date formats. Findings are prompts for
+review, not proof of a defect.
 
 For Acumatica integrations, combine the
 [screen KB and its companion skill](https://github.com/jigx-com/acumatica-kb-mcp)

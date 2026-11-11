@@ -14,3 +14,6 @@ jobs:
         with:
           node-version: 22
       - run: node --test skills/jigx/scripts/check-runtime.test.mjs
+      - run: node --test skills/jigx-ux/scripts/ux-lint.test.mjs
+      - run: node --test skills/jigx-ux/scripts/check-icons.test.mjs
+      - run: node --test skills/jigx-ux/scripts/propose.test.mjs
