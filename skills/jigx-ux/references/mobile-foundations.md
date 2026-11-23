@@ -18,11 +18,11 @@ put on a screen, where you put it, and how much of it there is.
   action panel because it is reachable and predictable. That does not mean every
   control must be at the bottom.
 - **Separate the dangerous from the frequent.** Don't put Delete next to Save, or
-  Cancel appointment next to Start. Put destructive actions in the overflow, behind a
+  Cancel appointment next to Start. Put destructive actions in an action list, behind a
   swipe with a confirm, or at the end of a section.
-- **Keep the bottom panel small.** Show at most two visible actions
-  (`numberOfVisibleActions: 1` or `2`). Put the rest in overflow. One main action
-  plus one secondary is the usual shape.
+- **Keep the bottom panel small.** At most two buttons in any state: one main action
+  plus one secondary. Don't rely on the three-dots overflow or put three buttons side
+  by side. Move the rest to the header or the screen (`actions-layout.md`).
 
 ## 2. Text, hierarchy and density
 
@@ -36,7 +36,11 @@ put on a screen, where you put it, and how much of it there is.
 - Group with sections and short headings ("Customer", "Schedule", "Lines"), not with
   long label prefixes.
 - Support large text. Layouts must reflow at large accessibility text sizes. Prefer
-  vertical stacks to side-by-side fields with fixed widths.
+  vertical stacks to side-by-side fields with fixed widths. Check it on a device after
+  restarting the app (`device-review.md`). Short labels survive large text best: a
+  row of five tiles with "Settings", "Items", "Time", "Photos", "Payments" breaks
+  labels mid-word ("Setting / s") and pushes the fifth tile off-screen. Use four
+  tiles with one-word labels, or two rows.
 
 ## 3. Contrast, colour and sunlight
 

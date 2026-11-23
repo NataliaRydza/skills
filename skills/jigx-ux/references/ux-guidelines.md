@@ -54,7 +54,8 @@ To find tables that supply icons, search for icon columns read from data, e.g.
 
 1.4 **Hide empty values instead of showing blanks.** A missing comment,
 description or name hides its row (or shows nothing) instead of `N/A`, an empty
-label or a dangling separator.
+label or a dangling separator. The same goes for fields that don't apply to this
+record (a Warehouse "/" on a service item) and totals with no value ("Total:").
 
 1.5 **Dates and times follow the solution's display settings** (date order,
 12/24-hour). Use the solution's shared format expressions or functions. Never
@@ -62,7 +63,8 @@ hard-code a date or time format on one screen.
 
 1.6 **Show only what helps the user.** Never display development or technical
 information: internal IDs, GUIDs, raw JSON or error payloads, queue/state
-names, debug counters, test labels or developer notes. If it does not help the
+names, jig or screen names (`add-appointment-photos`), generated file names,
+debug counters, test labels or developer notes. If it does not help the
 user do the job, it does not belong on the screen. Debugging aids stay on
 debug-only screens, hidden from users.
 
@@ -79,7 +81,8 @@ debug-only screens, hidden from users.
 Do not use red for information or a normal state (a record that is only
 waiting to sync is normal), and do not use green for something that is not
 finished. If everything is highlighted, nothing stands out, so keep strong
-colours for things that need action. Never use colour alone: pair it with tag
+colours for things that need action. **One status, one colour, everywhere:**
+"Not Started" must not be red on one screen and grey on another. Never use colour alone: pair it with tag
 text or an icon, because colour-blind users and sunlight both wash it out.
 
 1.8 **Use the user's words, the same way everywhere.** Use the business's
@@ -103,6 +106,17 @@ delete icon for "clear filter").
 1.12 **Numbers are formatted for people.** Money uses a shared currency
 format, durations read as hours and minutes, and quantities don't show
 unnecessary decimals.
+
+1.13 **Text fits on every phone.** Titles, labels, values and tags are readable on a
+small phone and with large text: they wrap or end with "...", but are never cut in
+half or split mid-word. Header buttons and badges take room from the title, so keep
+titles short. Check on a device (`device-review.md`), restarting the app after
+changing the text size. Spelling and plurals are correct ("1 file").
+
+1.14 **Custom components look native.** A custom component or hand-built layout
+uses the same text sizes, colours, spacing, card style, icons and tags as the native
+component that does the same job, and only exists when no native component fits
+(`custom-components.md`).
 
 ## 2. Actions
 
@@ -150,6 +164,18 @@ are not placed next to the frequent ones (see `mobile-foundations.md`).
 
 2.11 **Every gesture has a visible alternative.** Anything available by swipe
 is also available on the record screen or in an action menu.
+
+2.12 **At most two bottom buttons, in every state.** One main action and one
+secondary, styled differently. No three-dots overflow and no three buttons side by
+side. Count the buttons per state (normal, error, offline, ...), not per file. Fix a
+crowded screen by letting the main action follow the state, moving actions to the
+header or the screen instead of hiding them, dropping buttons that are disabled in
+that state, and turning navigation into rows (`actions-layout.md`).
+
+2.13 **Move an action instead of hiding it.** When a state (an error, an active
+record) takes over the bottom panel, the actions it pushes out stay reachable in the
+header or on the screen, unless a business rule really blocks them, and then the
+screen says why (2.4).
 
 ## 3. Long-running actions and feedback
 
@@ -199,6 +225,10 @@ state everywhere: "Waiting to sync", "Syncing", "Synced", "Sync failed",
 "Offline". Connectivity and sync states are mutually exclusive on screen
 (don't show "Offline" and "Syncing" together). See `feedback-and-sync.md`.
 
+3.10 **Anything slower than a second shows progress.** Picking a photo, loading a
+report or saving to the ERP shows a loading sign or placeholder, never a blank or
+black screen.
+
 ## 4. Editing and unsaved changes
 
 4.1 **Save is enabled only when something really changed.** Compare the
@@ -232,6 +262,15 @@ failing after the tap.
 4.8 **Prefill what the app already knows.** Default to today, the current
 user, the current record or line, and the last used choice where it makes
 sense, so the user types as little as possible.
+
+4.9 **A default is replaced, a real value is edited.** Decide which one a
+pre-filled field holds:
+
+- **A default** (quantity 1 on a new line): tapping the field clears it, so typing
+  "2" gives 2, not 12. Use `isTextClearedOnFocus: true` on the number or text field,
+  and fall back to the default if the user leaves it empty.
+- **A saved value** (the quantity of an existing line): it stays when tapped, and
+  the user changes it.
 
 ## 5. Lists and step-by-step flows
 
@@ -280,6 +319,13 @@ just to check it. See `lists-and-tables.md` for row anatomy.
 - [ ] User's words, used consistently; short text; context visible
 - [ ] Dates, times, money and durations use the shared formats
 - [ ] No action appears twice on the screen; one obvious main action in reach
+- [ ] At most two bottom buttons in every state; no three-dots menu; actions moved,
+      not hidden, when a state takes over the panel
+- [ ] Text fits on a small phone and with large text; titles not cut by header
+      buttons; spelling and plurals correct
+- [ ] Custom components look like the native component for the same job
+- [ ] Pre-filled defaults clear on tap; saved values stay
+- [ ] Slow steps show progress; one colour per status everywhere
 - [ ] Every swipe action is also available somewhere visible
 - [ ] Disabled actions show why; blocking errors offer a way to fix them
 - [ ] Destructive actions confirm; safe actions don't

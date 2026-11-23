@@ -65,3 +65,51 @@ test('severity: only missing confirm on destructive swipe is an error', () => {
   assert.equal(f[0].severity, 'error');
   assert.equal(f[0].line, 1);
 });
+
+test('more than two bottom actions are reported with their states', () => {
+  const jig = [
+    'title: Photos',
+    'type: jig.default',
+    'header:',
+    '  type: component.jig-header',
+    'actions:',
+    '  - numberOfVisibleActions: 2',
+    '    children:',
+    '      - type: action.go-to',
+    '        options:',
+    '          title: Add',
+    '          style:',
+    '            isPrimary: true',
+    '      - type: action.go-to',
+    '        options:',
+    '          title: View budget',
+    '      - type: action.action-list',
+    '        options:',
+    '          isHidden: =$not($hasErrors)',
+    "          title: =@ctx.system.isOnline ? 'Retry uploads' : 'Retry when online'",
+    '          actions:',
+    '            - type: action.go-to',
+    '              options:',
+    '                title: Nested, not a button',
+  ].join('\n');
+  const [f] = lintSource(jig).filter((x) => x.code === 'too-many-actions');
+  assert.ok(f, 'expected too-many-actions');
+  assert.match(f.message, /3 bottom actions: Add, View budget, "Retry uploads"\/\.\.\. \(some states\)\. 2 always shown\. 1 of them sit behind the three-dots menu/);
+  const two = jig.split('\n').slice(0, 15).join('\n');
+  assert.deepEqual(lintSource(two).filter((x) => x.code === 'too-many-actions'), []);
+});
+
+test('default numbers that typing appends to are reported', () => {
+  const field = (extra) => ['- type: component.number-field', '  instanceId: qty', '  options:', '    label: Quantity', '    initialValue: 1', ...extra].join('\n');
+  assert.deepEqual(codes(field([])), ['prefilled-number-default']);
+  assert.deepEqual(codes(field(['    isTextClearedOnFocus: true'])), []);
+  assert.deepEqual(codes(['- type: component.number-field', '  options:', '    initialValue: =@ctx.current.item.qty'].join('\n')), []);
+});
+
+test('custom layouts are flagged once per file, and visible strings are collected', async () => {
+  const src = '- type: component.custom-component\n  options:\n    title: Upload local changes\n- type: component.custom-component\n';
+  assert.deepEqual(codes(src), ['custom-layout']);
+  const {collectStrings} = await import('./ux-lint.mjs');
+  const texts = collectStrings('title: Model equiment\nlabel: =@ctx.x\nlinkTo: add-appointment-photos\nsubtitle: "1 files"\n').map((s) => s.text);
+  assert.deepEqual(texts, ['Model equiment', '1 files']);
+});

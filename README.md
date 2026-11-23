@@ -109,6 +109,9 @@ field choice, actions and labels, messages and confirmations, offline and sync s
 Save/Discard behaviour, colours, icons and accessibility. It includes domain
 playbooks for field service, time tracking, sales and order entry, project hubs,
 expenses and approvals, plus a UX review procedure for existing solutions.
+Run `/jigx-ux` in Claude Code for a review with proposals to approve. `skills/jigx-ux/USAGE.md` covers the
+prerequisites (Node 18+, the icon-migration skill for the icon check, Xcode and `idb`
+for the simulator walkthrough).
 
 ## Verify generated solutions
 

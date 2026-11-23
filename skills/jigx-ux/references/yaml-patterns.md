@@ -348,3 +348,22 @@ badge: =$count(@ctx.datasources.syncIssues)
   names with `scripts/check-icons.mjs --name ...`, migrate legacy Streamline names with
   the icon-migration skill (`icons.md`), and register every icon that comes from data or
   expressions (core rule 1.3).
+
+## Number field with a default that clears on tap
+
+A default the user normally replaces (core rule 4.9). Option names are from the
+number-field schema in the Jigx docs (`isTextClearedOnFocus`, `initialValue`).
+
+```yaml
+- type: component.number-field
+  instanceId: quantity
+  options:
+    label: Quantity
+    initialValue: 1
+    isTextClearedOnFocus: true
+    helperText: Leave empty for 1
+```
+
+Where the value is saved, fall back to 1 when the field is empty, so an empty field
+still saves the default. A field that shows an existing saved value doesn't clear on
+tap.

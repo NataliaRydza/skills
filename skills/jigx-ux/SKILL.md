@@ -1,6 +1,6 @@
 ---
 name: jigx-ux
-description: Use when designing, building, changing or reviewing anything a user sees or does in a Jigx app - screens, home hubs, record workspaces, lists, tables, forms, actions, messages, offline and sync state, edit and discard flows, checklists, dashboards. Covers mobile and frontline UX foundations (touch targets, contrast, gloves, interruptions), Jigx component choice, verified YAML patterns, and domain playbooks for field service, time tracking, sales and order entry, project hubs, expenses and approvals. Includes a UX review procedure, a heuristic UX lint, and an icon check that flags old Streamline icon names and hands off to the icon-migration skill (or gives the user migration steps).
+description: Use when designing, building, changing or reviewing anything a user sees or does in a Jigx app - screens, home hubs, record workspaces, lists, tables, forms, actions, messages, offline and sync state, edit and discard flows, checklists, dashboards. Covers mobile and frontline UX foundations (touch targets, contrast, gloves, interruptions), Jigx component choice, verified YAML patterns, and domain playbooks for field service, time tracking, sales and order entry, project hubs, expenses and approvals. Includes a UX review procedure, a device walkthrough on the simulator (large text, small phones), action-layout and custom-component checks, a heuristic UX lint, and an icon check that flags old Streamline icon names and hands off to the icon-migration skill (or gives the user migration steps).
 ---
 
 # Jigx UX
@@ -13,6 +13,16 @@ Jigx users are mostly frontline workers: one hand busy, outdoors or in a basemen
 interrupted often, offline at times, and doing the same job many times a day. Design
 for speed of the repeated task, honesty about data and sync, and recovery from
 interruption. That matters more than visual novelty.
+
+## How it's called
+
+`/jigx-ux` (optionally with a solution folder) runs a review: the lint and the icon
+check, a read of the main screens, proposals for the owner to approve (step 7), then
+an offer to walk the app on the simulator. When building or changing a screen, follow
+the workflow below.
+
+`USAGE.md` is the user-facing guide: install, prerequisites, what the review does, and
+every script's flags.
 
 ## Workflow
 
@@ -31,7 +41,9 @@ interruption. That matters more than visual novelty.
    `node scripts/check-icons.mjs <solution>`. If icons need migration, follow
    `references/icons.md`: run the icon-migration skill when it is available, or give
    the user the steps in it. For a review of an
-   existing solution, follow `references/ux-review.md`.
+   existing solution, follow `references/ux-review.md`. When a simulator with the app
+   is available (and the owner agrees), walk the main flows on it as
+   `references/device-review.md` describes: many layout problems only show there.
 7. **Propose before improving.** A change the owner asked for is implemented
    directly. Anything else the agent finds (reviews, audits, problems noticed along
    the way, icon migration) becomes a numbered proposal for the owner to approve
@@ -67,6 +79,12 @@ interruption. That matters more than visual novelty.
 - `references/domain-projects.md` - project hub ("project central"), daily logs,
   tasks and punch items, documents, project time, budget versus actual.
 - `references/domain-expenses-approvals.md` - receipt-first expenses, approvals inbox.
+- `references/actions-layout.md` - at most two bottom buttons per state, how to move
+  the rest (state table, header, rows, action list), worked example.
+- `references/custom-components.md` - when to build custom, and how to make it match
+  the native components.
+- `references/device-review.md` - walking the app on a simulator: flows, large text,
+  small phones, what to look for, screenshots into proposals.
 - `references/icons.md` - Tabler outline icon rules, the icon check, when to run the
   icon-migration skill, and the steps to give the user when it can't run.
 - `references/change-proposals.md` - propose, owner approves, implement only the
@@ -75,9 +93,12 @@ interruption. That matters more than visual novelty.
   severity, report format.
 - `references/sources.md` - research sources behind the rules.
 - `scripts/ux-lint.mjs` - dependency-free, line-based UX lint for `.jigx` sources
-  (review prompts, not proof). Tests: `scripts/ux-lint.test.mjs`.
+  (review prompts, not proof); `--strings` lists all visible text for a spelling
+  pass. Tests: `scripts/ux-lint.test.mjs`.
 - `scripts/propose.mjs` - drafts `ux-proposals.md` (numbered proposals with Approve
   checkboxes) from the lint and the icon check. Tests: `scripts/propose.test.mjs`.
+- `scripts/sim.sh` - simulator helper for the device review (screenshot with element
+  list, tap, swipe, type, text size with app restart).
 - `scripts/check-icons.mjs` - read-only check for old Streamline or invalid icon
   names, using the installed icon-migration skill. Tests: `scripts/check-icons.test.mjs`.
 
@@ -92,6 +113,8 @@ interruption. That matters more than visual novelty.
 - Do not let the user lose entered data, whether through failed saves, navigation or
   interruptions.
 - Do not repeat an action on the same screen, or leave a disabled action unexplained.
+- Do not show more than two bottom buttons in any state, or rely on the three-dots
+  menu.
 - Do not port a desktop or ERP form to mobile unchanged. Keep only the fields the
   mobile job needs.
 - Do not use Streamline or `-filled` icon names, and do not rename icons by hand

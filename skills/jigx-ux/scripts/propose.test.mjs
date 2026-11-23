@@ -26,21 +26,26 @@ test('icon migration and data icons become proposals', () => {
     fromData: [{source: 'default/menu ($.icon, Dynamic Data)', file: 'datasources/m.jigx', line: 3}], dynamic: []};
   const p = buildProposals([], icons);
   assert.equal(p.length, 2);
-  assert.match(p[0].title, /Migrate 2 icon names/);
+  assert.match(p[0].title, /Move 2 icon names/);
   assert.deepEqual(p[0].places, ['calendar-3 → calendar', 'coffee-mug → (needs a choice)']);
+  assert.match(p[0].why, /red question mark/);
   assert.match(p[1].fix, /Owner action/);
 });
 
 test('markdown has checkboxes, a summary table and says nothing changed yet', () => {
   const md = renderMarkdown({solution: 'Demo', date: '2026-11-11', proposals: buildProposals(lint, null)});
   assert.match(md, /Nothing has been changed yet/);
-  assert.match(md, /## P1 \[High\] Confirm destructive swipe actions\n\n- \[ \] \*\*Approve\*\*/);
-  assert.match(md, /\| P2 \| Medium \| Stop colouring "waiting to sync" as an error \| 2 \| S \|/);
+  assert.match(md, /## P1 \[High\] Ask before a swipe deletes something\n\n- \[ \] \*\*Approve\*\*\n- \*\*What's wrong:\*\* .+\n- \*\*Why change it:\*\* .+\n- \*\*Proposed fix:\*\* /);
+  assert.match(md, /\| P2 \| Medium \| Don't show "waiting to sync" in red \| 2 \| S \|/);
+  assert.match(md, /- \*\*Where it happens \(2\):\*\*\n  - jigs\/c.jigx:2/);
   assert.match(md, /## Manual findings/);
 });
 
 test('every lint code has a proposed fix', async () => {
   const src = await import('node:fs').then((fs) => fs.readFileSync(new URL('./ux-lint.mjs', import.meta.url), 'utf8'));
   const codes = [...src.matchAll(/add\('([a-z-]+)'/g)].map((m) => m[1]);
-  for (const code of new Set(codes)) assert.ok(FIXES[code], `missing fix text for ${code}`);
+  for (const code of new Set(codes)) {
+    assert.ok(FIXES[code], `missing fix text for ${code}`);
+    for (const key of ['title', 'problem', 'why', 'fix']) assert.ok(FIXES[code][key], `${code} has no ${key}`);
+  }
 });

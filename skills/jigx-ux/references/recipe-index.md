@@ -15,6 +15,9 @@ Load the smallest set of references for the task. `ux-guidelines.md` always appl
 | Toasts, banners, modals, confirmations, error text | `feedback-and-sync.md` |
 | Offline state, waiting to sync, sync failures, conflicts | `feedback-and-sync.md` |
 | Touch targets, gloves, sunlight, accessibility, response times | `mobile-foundations.md` |
+| Bottom buttons, more than two actions, three-dots menu, header actions | `actions-layout.md` |
+| Custom components, hand-built layouts, "does this look native?" | `custom-components.md` |
+| Walking the app on a simulator, large text, small phones, screenshots | `device-review.md` |
 | Writing the YAML for any of the above | `yaml-patterns.md` |
 | Choosing icons, checking icon names, Streamline → Tabler migration | `icons.md` |
 | Field service / technician / appointments / work orders | `domain-field-service.md` |

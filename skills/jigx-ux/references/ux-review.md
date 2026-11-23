@@ -31,6 +31,16 @@ It exits nonzero only for errors (destructive swipes without a confirm).
 | `raw-error-text` / `raw-json` | Error value or stringified record shown to the user |
 | `icon-from-data` | Icons from data. Check that every value is registered |
 | `error-in-toast` | An error shown only in a disappearing toast |
+| `too-many-actions` | More than two bottom buttons in a group, or a three-dots menu. Write the state table (`actions-layout.md`) |
+| `custom-layout` | Custom component or hand-built layout. Compare with the native look on a device (`custom-components.md`) |
+| `prefilled-number-default` | A number field with a fixed default that typing appends to (1 + "2" = 12) |
+
+For spelling and wording, list every literal text the user can see and read it
+through (typos, plurals, internal names, inconsistent terms):
+
+```sh
+node skills/jigx-ux/scripts/ux-lint.mjs /path/to/solution --strings
+```
 
 Run the icon check too, and handle its result as `icons.md` describes (run the
 icon-migration skill, or give the user the steps):
@@ -61,7 +71,9 @@ grep -rn -A2 "icon: loading-data" . --include='*.jigx'
 
 ## 3. Walk the main journeys
 
-Static checks can't see flows. On a device or emulator, walk each main journey of the
+Static checks can't see flows. When a simulator with the app is available, the agent
+can walk it itself (`device-review.md`, `scripts/sim.sh`), including large text and
+dark mode. Otherwise ask the user to do it. On a device or emulator, walk each main journey of the
 solution (for example: open today's work, start, record lines/time/photos, complete,
 sign, share, and sync), and check each of these:
 

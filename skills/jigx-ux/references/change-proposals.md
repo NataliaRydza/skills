@@ -45,18 +45,23 @@ on its own findings until the owner has approved them.
 ## P7 [High] Complete fails silently when the signature is missing
 
 - [ ] **Approve**
-- **Fix:** List the missing items above Complete with links ("Sign", "Open time logs"); keep Complete disabled with the reason.
+- **What's wrong:** Tapping Complete without a signature does nothing. No message says why.
+- **Why change it:** The technician thinks the job is closed and leaves the site; the appointment stays open and the office chases them later.
+- **Proposed fix:** List the missing items above Complete with links ("Sign", "Open time logs"); keep Complete disabled with the reason.
 - **Rule:** core rules 2.4, 2.5 · domain-field-service.md section 7
-- **Effort:** M
+- **Effort:** M (several screens or a shared part)
 - **Source:** manual (walkthrough: complete appointment offline)
 - **Status:** proposed
-- **Places:**
+- **Where it happens (1):**
   - jigs/Appointment/view-appointment.jigx
 - **Decision needed:** should Complete stay visible-but-disabled, or open the list of blockers?
 ```
 
 - **One problem per proposal**, so the owner can approve or reject it on its own. Don't
   bundle unrelated fixes.
+- **Write for an owner who doesn't read YAML.** "What's wrong" describes what users see
+  today, "Why change it" says what goes wrong for them because of it, and "Proposed fix"
+  says what will change. Avoid property names and file jargon in these three lines.
 - **The fix says what will change**, in words the owner understands. Include the
   proposed message text when the fix changes wording.
 - **Severity** follows `ux-review.md`: High covers data loss, a user trapped, or wrong
