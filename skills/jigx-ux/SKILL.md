@@ -40,8 +40,11 @@ every script's flags.
    heuristic lint `node scripts/ux-lint.mjs <solution> --text` and the icon check
    `node scripts/check-icons.mjs <solution>`. If icons need migration, follow
    `references/icons.md`: run the icon-migration skill when it is available, or give
-   the user the steps in it. For a review of an
-   existing solution, follow `references/ux-review.md`. When a simulator with the app
+   the user the steps in it. For a Core SDK (TypeScript) project, run them on the
+   project folder after a build; findings name the `src/` file to change, and
+   `build/` is never edited. For a review of an
+   existing solution, follow `references/ux-review.md`, including the triage step:
+   mark every place confirmed, intentional or needs verification before the owner sees the file. On a large solution, review one area at a time (`--only jigs/<folder>` or `--flow <start screen>`). When a simulator with the app
    is available (and the owner agrees), walk the main flows on it as
    `references/device-review.md` describes: many layout problems only show there.
 7. **Propose before improving.** A change the owner asked for is implemented
@@ -95,7 +98,7 @@ every script's flags.
 - `scripts/ux-lint.mjs` - dependency-free, line-based UX lint for `.jigx` sources
   (review prompts, not proof); `--strings` lists all visible text for a spelling
   pass. Tests: `scripts/ux-lint.test.mjs`.
-- `scripts/propose.mjs` - drafts `ux-proposals.md` (numbered proposals with Approve
+- `scripts/propose.mjs` - drafts `~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md` (numbered proposals with Approve
   checkboxes) from the lint and the icon check. Tests: `scripts/propose.test.mjs`.
 - `scripts/sim.sh` - simulator helper for the device review (screenshot with element
   list, tap, swipe, type, text size with app restart).

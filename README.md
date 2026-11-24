@@ -153,7 +153,7 @@ For a UX review, draft a list of proposed changes for the solution owner to
 approve before anything is implemented:
 
 ```sh
-node skills/jigx-ux/scripts/propose.mjs /path/to/solution   # writes ux-proposals.md
+node skills/jigx-ux/scripts/propose.mjs /path/to/solution   # writes ~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md
 ```
 
 The owner ticks **Approve** under each proposal (or replies with IDs such as

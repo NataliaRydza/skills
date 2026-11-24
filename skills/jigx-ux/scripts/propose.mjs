@@ -3,12 +3,15 @@
 // anything is implemented. Combines ux-lint findings and the icon check into numbered
 // proposals (P1, P2, ...) with checkboxes. Writes only the proposals file.
 //
-// Usage: node propose.mjs <solution> [--out <file>] [--stdout] [--json] [--icon-skill <path>]
+// Usage: node propose.mjs <solution or Core SDK project> [--only <folder>] [--flow <screen>] [--out <file>] [--stdout] [--json] [--icon-skill <path>]
+// Default output: ~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md (never inside the repo).
 // See references/change-proposals.md for the approval workflow.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
-import {lintSolution} from './ux-lint.mjs';
+import {lintProject, scopeArgs} from './ux-lint.mjs';
 import {findIconSkill, loadTool, summarise, INSTALL_STEPS} from './check-icons.mjs';
 
 const SEVERITY = {error: 'High', warning: 'Medium', info: 'Low'};
@@ -21,12 +24,8 @@ const EFFORT = {S: 'S (minutes, small edit)', M: 'M (several screens or a shared
 export const FIXES = {
   'destructive-swipe-without-confirm': {title: 'Ask before a swipe deletes something',
     problem: 'Swiping a row and tapping Delete removes it straight away, with no "are you sure?" and no undo.',
-    why: 'Swipes are easy to trigger by accident, for example while scrolling with gloves on. The user loses the line and may not notice.',
+    why: 'Swipes are easy to trigger by accident, for example while scrolling with gloves on. The user loses the line and may not notice. Where the delete goes to the server (ERP), it can\'t be undone at all.',
     fix: 'Show a short question first that names what will be lost ("Delete this line? It hasn\'t been sent yet.") with the buttons "Delete line" and "Keep".', effort: 'S'},
-  'destructive-swipe-confirm-unverified': {title: 'Check that shared delete actions ask first',
-    problem: 'The Delete swipe calls a shared action, so it is not clear from this screen whether the user is asked before deleting.',
-    why: 'If the shared action doesn\'t ask, an accidental swipe deletes the record.',
-    fix: 'Check the shared action and add the "are you sure?" question if it is missing.', effort: 'S', check: true},
   'destructive-icon-mismatch': {title: 'Show a bin icon on delete actions',
     problem: 'Delete actions show an icon that means something else, such as a pencil (edit).',
     why: 'Users recognise the icon before they read the label. A pencil on Delete invites a tap that deletes instead of edits.',
@@ -97,17 +96,28 @@ export const FIXES = {
     fix: 'Add the small header image for that area (not on bottom sheets or pop-ups).', effort: 'S', check: true},
 };
 
+// Owned by the icon-migration skill (its fromData list), so not proposed here.
+const LEFT_TO_ICON_MIGRATION = new Set(['icon-from-data']);
+
 export function buildProposals(lintFindings, icons) {
   const groups = new Map();
   for (const f of lintFindings) {
-    const g = groups.get(f.code) ?? {code: f.code, severity: SEVERITY[f.severity] ?? 'Low', places: []};
-    g.places.push(`${f.file}:${f.line}`);
+    if (LEFT_TO_ICON_MIGRATION.has(f.code)) continue;
+    const g = groups.get(f.code) ?? {code: f.code, severity: SEVERITY[f.severity] ?? 'Low', places: [], messages: new Map(), verify: {}};
+    // A finding that is High (error) anywhere makes the whole proposal High.
+    if (ORDER[SEVERITY[f.severity]] < ORDER[g.severity]) g.severity = SEVERITY[f.severity];
+    const place = `${f.file}:${f.line}${f.source ? ` (from ${f.source})` : ''}`;
+    g.places.push(place);
+    // The lint can't decide this one from the source alone (it depends on data or on where a value is set).
+    if (f.verify) g.verify[place] = f.verify;
+    if (f.excerpt) g.messages.set(f.excerpt, (g.messages.get(f.excerpt) ?? 0) + 1);
     groups.set(f.code, g);
   }
   const proposals = [...groups.values()].map((g) => {
     const meta = FIXES[g.code] ?? {title: g.code, fix: 'Review and fix.', effort: 'S', check: true};
     return {source: `ux-lint:${g.code}`, severity: g.severity, title: meta.title, problem: meta.problem, why: meta.why, fix: meta.fix, effort: meta.effort,
-      check: !!meta.check, rule: lintFindings.find((f) => f.code === g.code)?.message.match(/\(([^)]*rule[^)]*)\)/)?.[1] ?? '', places: g.places};
+      check: !!meta.check, rule: lintFindings.find((f) => f.code === g.code)?.message.match(/\(([^)]*rule[^)]*)\)/)?.[1] ?? '', places: g.places,
+      messages: [...g.messages].map(([text, count]) => ({text, count})).sort((a, b) => b.count - a.count), verify: g.verify};
   });
   if (icons?.status === 'needs-migration') {
     const names = [...icons.legacy.map((l) => `${l.name} → ${l.suggested}`), ...icons.unknown.map((u) => `${u.name} → (needs a choice)`)];
@@ -118,13 +128,6 @@ export function buildProposals(lintFindings, icons) {
       fix: `Run the icon-migration tool on this solution. It renames the icons and opens a review page where every pick can be checked and changed before publishing${unknown ? '. Names marked "needs a choice" need a new icon picked by hand' : ''}.`, effort: 'M', check: false,
       rule: 'icons.md', places: names});
   }
-  if (icons && (icons.counts?.fromData || icons.counts?.dynamic)) {
-    proposals.push({source: 'check-icons:data', severity: 'Low', title: 'Check icon names stored in data tables',
-      problem: 'Some icons are read from data tables or worked out from data, not written in the screens.',
-      why: 'The icon migration can only rename icons in the screens. If a table still holds old icon names, those icons can break after the migration.',
-      fix: 'Owner action: check these tables and sources hold Tabler icon names, and that each one is listed in assets/icons.jigx. The agent can\'t change data at the source.',
-      effort: 'S', check: true, rule: 'core rule 1.3', places: [...icons.fromData.map((d) => `${d.source} (${d.file}:${d.line})`), ...icons.dynamic.map((d) => `${d.file}:${d.line}`)]});
-  }
   proposals.sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || b.places.length - a.places.length);
   return proposals.map((p, i) => ({id: `P${i + 1}`, ...p}));
 }
@@ -133,6 +136,7 @@ export function renderMarkdown({solution, date, proposals, notes = []}) {
   const out = [];
   out.push(`# UX change proposals: ${solution}`, '');
   out.push(`Drafted ${date}. Nothing has been changed yet.`, '');
+  out.push('**Checked:** each place says whether it was checked in the source: **confirmed** (a real problem), **intentional** (left out of the fix, with the reason), **needs verification** (the source cannot settle it, e.g. it depends on data: check it on a device or answer the question) or **not checked yet**.', '');
   out.push('**How to approve:** tick **Approve** under each proposal to implement (`- [x] **Approve**`), or reply with IDs, e.g. "approve P1, P3-P5; reject P2; P4 except jigs/x.jigx". Add a note under any proposal to change the fix. Only approved proposals are implemented.', '', '**Severity:** High = data can be lost or users get stuck; Medium = slows down or confuses everyday work; Low = polish.', '');
   for (const n of notes) out.push(`> ${n}`, '');
   out.push('| ID | Severity | Proposal | Where (count) | Effort |', '| --- | --- | --- | --- | --- |');
@@ -148,13 +152,26 @@ export function renderMarkdown({solution, date, proposals, notes = []}) {
     out.push(`- **Effort:** ${EFFORT[p.effort] ?? p.effort}${p.check ? ' · check each place first, some may be intentional' : ''}`);
     out.push(`- **Source:** ${p.source}`);
     out.push(`- **Status:** proposed`);
+    if (p.messages?.length) {
+      out.push(`- **Messages found (${p.messages.length}):**`);
+      for (const m of p.messages.slice(0, 10)) out.push(`  - "${m.text}" (${m.count} ${m.count === 1 ? 'place' : 'places'})`);
+    }
     out.push(`- **Where it happens (${p.places.length}):**`);
-    for (const place of p.places.slice(0, 40)) out.push(`  - ${place}`);
+    for (const place of p.places.slice(0, 40)) out.push(`  - ${place} · ${p.verify?.[place] ? `needs verification: ${p.verify[place]}` : 'not checked yet'}`);
     if (p.places.length > 40) out.push(`  - ... ${p.places.length - 40} more (run the script with --json for all)`);
     out.push('');
   }
+  out.push('## Not proposed here', '', '_Icons that come from data (tables, expressions) are handled by the icon-migration skill: its fromData list traces each one to the datasource. Run `/icon-migration` for those._', '');
   out.push('## Manual findings', '', '_Findings from the journey walkthrough (ux-review.md section 3) are added here as further proposals, in the same format._', '');
   return out.join('\n');
+}
+
+// ~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md, so nothing lands in the repo.
+function defaultOut(project, solution, scope = {}) {
+  let branch = 'no-git';
+  try { branch = execFileSync('git', ['-C', project, 'rev-parse', '--abbrev-ref', 'HEAD'], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim(); } catch {}
+  const part = [scope.flow, ...(scope.only ?? [])].filter(Boolean).map((x) => path.basename(x)).join('-');
+  return path.join(os.homedir(), 'jigx-ux-reviews', solution, branch.replace(/[^\w.-]+/g, '-'), `ux-proposals${part ? `-${part.replace(/[^\w.-]+/g, '-')}` : ''}.md`);
 }
 
 async function iconSummary(solutionDir, explicit) {
@@ -165,24 +182,29 @@ async function iconSummary(solutionDir, explicit) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const argv = process.argv.slice(2);
+  const {scope, rest: argv} = scopeArgs(process.argv.slice(2));
   const take = (flag) => { const i = argv.indexOf(flag); if (i < 0) return undefined; const v = argv[i + 1]; argv.splice(i, 2); return v; };
   const out = take('--out');
   const explicit = take('--icon-skill');
   const positional = argv.filter((a) => !a.startsWith('--'));
   try {
-    const solutionDir = path.resolve(positional[0] ?? '.');
-    if (!fs.existsSync(path.join(solutionDir, 'index.jigx'))) throw new Error(`no index.jigx in ${solutionDir}; pass the solution folder`);
+    const {target, findings} = lintProject(positional[0] ?? '.', scope);
+    const solutionDir = target.root;
     const {summary, note} = await iconSummary(solutionDir, explicit);
-    const proposals = buildProposals(lintSolution(solutionDir), summary);
+    const proposals = buildProposals(findings, summary);
+    const notes = note ? [note] : [];
+    const solution = path.basename(target.kind === 'sdk' ? target.project : solutionDir);
+    if (scope.only.length || scope.flow) notes.push(`Scope: ${[scope.flow && `the flow from ${scope.flow}`, scope.only.length && scope.only.join(', ')].filter(Boolean).join(' within ')}. The rest of the solution was not reviewed; icons are checked for the whole solution.`);
+    if (target.kind === 'sdk') notes.push('Core SDK (TypeScript) project: findings point at the generated build/ files, with the src/ file that generates them where it was found. Fix in src/, never in build/; the next build overwrites it.');
     const date = new Date().toISOString().slice(0, 10);
     if (argv.includes('--json')) {
-      console.log(JSON.stringify({solution: path.basename(solutionDir), date, proposals, notes: note ? [note] : []}, null, 2));
+      console.log(JSON.stringify({solution, date, proposals, notes}, null, 2));
     } else {
-      const md = renderMarkdown({solution: path.basename(solutionDir), date, proposals, notes: note ? [note] : []});
+      const md = renderMarkdown({solution, date, proposals, notes});
       if (argv.includes('--stdout')) console.log(md);
       else {
-        const file = path.resolve(out ?? path.join(solutionDir, 'ux-proposals.md'));
+        const file = path.resolve(out ?? defaultOut(target.project, solution, scope));
+        fs.mkdirSync(path.dirname(file), {recursive: true});
         if (fs.existsSync(file)) throw new Error(`${file} already exists; it may hold the owner's approvals. Pass --out <new file> or remove it first.`);
         fs.writeFileSync(file, md);
         console.log(`Wrote ${proposals.length} proposals to ${file}`);

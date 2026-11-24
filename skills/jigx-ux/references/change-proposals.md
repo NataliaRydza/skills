@@ -13,15 +13,15 @@ on its own findings until the owner has approved them.
 | While implementing a request, the agent notices other problems | **Yes** for those extras. Do the requested change only, and add the extras as proposals |
 | Icon migration found by `check-icons.mjs` | **Yes.** It is one proposal. Once approved, run the icon-migration skill (which has its own review page) |
 | Behaviour shared with other customers would change or be removed | **Yes**, always as a separate proposal. Prefer a config flag (core rule 2.2) |
-| Data values at the source (Dynamic Data rows, ERP values) | The agent can't change these. Propose them as **owner actions** |
+| Data values at the source (Dynamic Data rows, ERP values) | The agent can't change these. Propose them as **owner actions**. Icon names in data are the exception: the icon-migration skill handles them (its fromData list), so they are not proposed here |
 
 ## 2. Draft the proposals
 
 1. Run the draft script from the skill folder against the solution (the folder with
-   `index.jigx`):
+   `index.jigx`, or a Core SDK project folder after a build):
 
    ```sh
-   node skills/jigx-ux/scripts/propose.mjs /path/to/solution                 # writes <solution>/ux-proposals.md
+   node skills/jigx-ux/scripts/propose.mjs /path/to/solution                 # writes ~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md
    node skills/jigx-ux/scripts/propose.mjs /path/to/solution --out review.md # another file
    node skills/jigx-ux/scripts/propose.mjs /path/to/solution --stdout        # print only
    node skills/jigx-ux/scripts/propose.mjs /path/to/solution --json          # machine-readable
@@ -31,9 +31,13 @@ on its own findings until the owner has approved them.
    ordered by severity. Findings of the same kind are grouped into one proposal with all
    their places. It refuses to overwrite an existing proposals file, because that file
    may hold the owner's decisions.
-2. **Check each proposal before handing it over.** The lint is heuristic. Remove places
-   that are intentional (for example a real "N/A" answer option) and adjust the fix
-   text to the solution.
+2. **Check each place before handing it over.** The lint is heuristic. Every place
+   starts as "not checked yet"; change it to **confirmed**, **intentional** (with the
+   reason, and leave it out of the fix) or **needs verification** (the source can't
+   settle it: say what to check on a device, or add a "Decision needed" line). Some
+   places arrive already marked needs verification by the lint, with what to check. Drop proposals where every place is intentional, adjust the severity to what
+   the source shows, and adjust the fix text to the solution. The owner should never
+   get a place marked "not checked yet".
 3. **Add manual findings** from the journey walkthrough (`ux-review.md` section 3) under
    "Manual findings", in the same format, with the next free IDs.
 4. Keep the file out of the published solution. Don't commit it to the solution repo
@@ -53,7 +57,7 @@ on its own findings until the owner has approved them.
 - **Source:** manual (walkthrough: complete appointment offline)
 - **Status:** proposed
 - **Where it happens (1):**
-  - jigs/Appointment/view-appointment.jigx
+  - jigs/Appointment/view-appointment.jigx:381 · confirmed
 - **Decision needed:** should Complete stay visible-but-disabled, or open the list of blockers?
 ```
 

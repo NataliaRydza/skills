@@ -35,9 +35,12 @@ Common states are normal, error or sync failure, offline, record not synced yet
 action's `isHidden` and `style.isDisabled` expression to fill the table. A
 **disabled** button still takes space, so count it.
 
-The UX lint reports groups with more than two actions (`too-many-actions`), with the
-number that are always shown. It can't evaluate the expressions, so the table is the
-agent's job.
+The UX lint reports a group when more than two of its buttons can show at the same
+time (`too-many-actions`). It reads each button's `when` (or `isHidden: =$not(...)`) and
+doesn't count buttons together when their conditions rule each other out, such as
+`step=1` and `step=2`. When two buttons always show, it is a warning. When it depends
+on data it can't read (an `or`, a calculated flag), it is marked needs verification,
+and the table is the agent's job.
 
 ## 3. How to fix it
 

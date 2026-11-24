@@ -28,7 +28,8 @@ exists in both sets now shows the Tabler drawing, which can change the meaning.
 
 ## 2. Check a solution
 
-Run the read-only check against the solution folder (the folder with `index.jigx`):
+Run the read-only check against the solution folder (the folder with `index.jigx`, or
+the build output of a Core SDK project):
 
 ```sh
 node skills/jigx-ux/scripts/check-icons.mjs /path/to/solution
@@ -47,7 +48,9 @@ Streamline lists), so both tools always agree. It writes nothing. Exit codes:
 | 3 | `tool-missing` | The icon-migration skill is not installed. The output includes install steps |
 
 The report also counts **icons from data** (table reads and computed values). The
-migration can't change those values, so they must be checked at the source.
+migration can't change those values, so they must be checked at the source. The
+icon-migration skill owns that list (`fromData`, traced to each datasource and shown on
+its review page), so the UX proposals don't repeat it. Point the owner to it instead.
 
 The check looks for the skill in the Claude Code plugin cache, `~/.claude/skills`,
 `~/.codex/skills`, `~/.agents/skills` and the project's `.claude/skills` or

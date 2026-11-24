@@ -5,7 +5,11 @@ solution, or before a release.
 
 ## 1. Automated pass
 
-Run the dependency-free UX lint over the solution source (the folder with `index.jigx`):
+Run the dependency-free UX lint over the solution source (the folder with `index.jigx`).
+For a Core SDK (TypeScript) project, pass the project folder: the lint reads the build
+output (build it first: `npm ci`, then `npx jigx build`, with the customer profile if
+the repo has one) and names the `src/` file behind each finding. **Fix findings in
+`src/`, never in `build/`.** The next build overwrites `build/`.
 
 ```sh
 node skills/jigx-ux/scripts/ux-lint.mjs /path/to/solution --text
@@ -14,24 +18,36 @@ node --test skills/jigx-ux/scripts/ux-lint.test.mjs
 
 It reports `error` / `warning` / `info` findings with `file:line` and the core rule.
 The lint is line-based and only produces review prompts. Open each finding and decide.
-It exits nonzero only for errors (destructive swipes without a confirm).
+It exits nonzero only for errors (destructive swipes without a confirm). The lint
+follows a swipe into the shared actions it calls (`actions/<name>.jigx`). A confirm
+that only runs in some cases (`when:`) doesn't count, and an action it can't find is
+treated as not asking, so check it.
+
+Some findings come marked **needs verification**: the source alone can't settle them,
+because the answer depends on data or on where a value is set (buttons that swap by
+state, forms whose fields save on change, error text set by the app). Check those in
+the source or on a device before calling them confirmed.
+
+On a large solution, review one area at a time: `--only jigs/<folder>` (comma
+separated, or repeated) or `--flow <start screen>`, which follows the screens it opens,
+its bottom sheets and the shared actions they call. Cross-file checks still read the
+whole solution. Both flags work for `ux-lint.mjs` and `propose.mjs`.
 
 | Code | What it suggests |
 | --- | --- |
 | `missing-title` | Full screen without a title |
-| `missing-header` | Default/list screen without a header image (ignore for sheets/modals) |
-| `destructive-swipe-without-confirm` | Delete/Remove swipe runs immediately |
-| `destructive-swipe-confirm-unverified` | Delete swipe calls a shared action. Check that it confirms |
+| `missing-header` | Default/list screen without a header image. Skipped when every way into the screen is a modal (`isModal: true`) or another screen's bottom sheet |
+| `destructive-swipe-without-confirm` | Delete/Remove swipe with no "are you sure?", directly or in the shared actions it calls. Says when it deletes on the server |
 | `destructive-icon-mismatch` / `destructive-color` | Delete shown with a pencil icon or a non-negative colour |
 | `sync-state-negative` | "Local / not synced" tag coloured red |
-| `discard-alert-off` | Discard warning hard-disabled on a form |
-| `generic-copy` / `generic-label` | "Oops", "Something went wrong", OK/Submit/Yes/No |
-| `na-literal` | `'N/A'` possibly shown for a missing value |
+| `discard-alert-off` | Discard warning hard-disabled on a form with typed fields. A form that saves only with a button is a warning (pop-ups too). When every typed field saves itself (`onChange`), it is info and needs verification. Filter and picker forms are skipped; forms embedded in a hub screen are usually intentional |
+| `generic-copy` / `generic-label` | "Oops", "Something went wrong", OK/Submit/Yes/No. The proposal quotes each message and how often it appears, so one copied template shows up as one fix |
+| `na-literal` | `'N/A'` possibly shown for a missing value. Not flagged when N/A is an answer option (`{"value":"N/A"}`) or a stored answer it is compared with |
 | `hardcoded-date-format` | One-off date/time format instead of the shared one |
-| `raw-error-text` / `raw-json` | Error value or stringified record shown to the user |
-| `icon-from-data` | Icons from data. Check that every value is registered |
+| `raw-error-text` / `raw-json` | Error value or stringified record shown to the user (an error used only in a condition, `.error ? "Error" : ...`, is not flagged). Errors from a response or the sync queue are system errors; errors set by the app (jig state, inputs, a component) need verification of where the text is written |
+| `icon-from-data` | Icons from data. Not proposed: the icon-migration skill owns these (its fromData list) |
 | `error-in-toast` | An error shown only in a disappearing toast |
-| `too-many-actions` | More than two bottom buttons in a group, or a three-dots menu. Write the state table (`actions-layout.md`) |
+| `too-many-actions` | More than two bottom buttons that can show at the same time. Buttons whose conditions rule each other out (`step=1` / `step=2`) are not counted together. A warning when two always show; when it depends on data, info and needs verification. Write the state table (`actions-layout.md`) |
 | `custom-layout` | Custom component or hand-built layout. Compare with the native look on a device (`custom-components.md`) |
 | `prefilled-number-default` | A number field with a fixed default that typing appends to (1 + "2" = 12) |
 
@@ -57,8 +73,6 @@ action groups and undeclared state are UX defects too.
 These are useful searches the lint doesn't cover. Run them from the solution root:
 
 ```sh
-# Icons read from data tables (core rule 1.3)
-grep -rn -F "'\$.icon'" . --include='*.jigx'
 # Internal IDs or GUIDs bound to visible text
 grep -rnE "(title|subtitle|description|value):\s*=.*\b(id|guid|uuid|_tmp)\b" . --include='*.jigx'
 # Several refresh/sync buttons on one screen (core rule 5.6)
@@ -110,8 +124,15 @@ sign, share, and sync), and check each of these:
 A review never changes the solution. Its output is a proposals list that the owner
 approves (`change-proposals.md`):
 
-1. Draft with `node skills/jigx-ux/scripts/propose.mjs /path/to/solution`.
-2. Check each drafted proposal, and remove places that are intentional.
+1. Draft with `node skills/jigx-ux/scripts/propose.mjs /path/to/solution`. It writes to
+   `~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md`, outside the repo (with
+   `--only`/`--flow`, the file name says the scope).
+2. **Triage before the owner sees it.** Open each place in the source and replace
+   "not checked yet" with **confirmed**, **intentional** (with the reason; take it out
+   of the fix) or **needs verification** (the source can't settle it: say what to check on a device, or add a "Decision needed" line). Drop a proposal when every
+   place is intentional, raise or lower its severity when the source shows a different
+   risk (for example a delete that goes to the server is High), and narrow the fix to
+   the real problem (quote the message that has to change).
 3. Add walkthrough findings under "Manual findings", using the severity table above.
 4. Hand the file to the owner, and implement only what they approve.
 
