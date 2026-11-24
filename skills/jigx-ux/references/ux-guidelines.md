@@ -15,8 +15,10 @@ shapes are in `yaml-patterns.md`.
 1.1 **Every full screen has a title.** Name what the user is looking at
 ("Photos", "Select Complete Reason Code"), not the action that opened it.
 
-1.2 **Every `jig.default` / list screen has a header image.** Use a small
-`component.jig-header` with a registered image:
+1.2 **Full screens have a header image:** lists, menus, home screens and forms. Use a
+small `component.jig-header` with a registered image. Bottom sheets, pop-ups and modals
+don't get one. Whether an app uses header images at all is one app-wide decision: when
+no screen has one, propose that decision once rather than a fix per screen.
 
 ```yaml
 header:
@@ -59,7 +61,8 @@ record (a Warehouse "/" on a service item) and totals with no value ("Total:").
 
 1.5 **Dates and times follow the solution's display settings** (date order,
 12/24-hour). Use the solution's shared format expressions or functions. Never
-hard-code a date or time format on one screen.
+hard-code a date or time format on one screen. PDFs, prints and shared documents
+use the same format as the screens.
 
 1.6 **Show only what helps the user.** Never display development or technical
 information: internal IDs, GUIDs, raw JSON or error payloads, queue/state
@@ -82,7 +85,8 @@ Do not use red for information or a normal state (a record that is only
 waiting to sync is normal), and do not use green for something that is not
 finished. If everything is highlighted, nothing stands out, so keep strong
 colours for things that need action. **One status, one colour, everywhere:**
-"Not Started" must not be red on one screen and grey on another. Never use colour alone: pair it with tag
+"Not Started" must not be red on one screen and grey on another. All tags that mean "waiting to upload" (Not synced, Edited, Pending delete) share
+one calm colour, and only problems the user must fix are red. Never use colour alone: pair it with tag
 text or an icon, because colour-blind users and sunlight both wash it out.
 
 1.8 **Use the user's words, the same way everywhere.** Use the business's

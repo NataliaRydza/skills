@@ -130,21 +130,26 @@ Android isn't covered by the walkthrough yet.
 | Medium | Confusing, slow or inconsistent. Fix soon |
 | Low | Polish. Fix when you touch the screen |
 
+The lint gives each finding a starting severity. Claude sets the final one while
+checking each place, so a Low from the lint can become Medium or High.
+
 The lint reads files line by line, so its findings are **prompts to check, not
 proof**. Some places may be intentional; the proposal says so. What it looks for:
 
 | Area | Finds |
 | --- | --- |
-| Screens | missing titles or header images |
+| Screens | missing titles or header images (on lists, menus, home screens and forms, not on bottom sheets or pop-ups; if no screen has one, it is one decision for the whole app) |
 | Delete | a swipe that deletes with no "are you sure?" (it follows shared actions, and says when the delete goes to the server), a delete shown with a pencil icon or not in red |
-| Sync state | "waiting to sync" coloured as an error |
+| Sync state | "not synced", "pending" or "edited" coloured as an error; "waiting" tags in different colours, or one tag in different colours on two screens (the proposal shows a table of every sync tag and its colour) |
 | Edit flows | the discard warning switched off on a form that saves only with a button. Forms whose fields save as they change are marked to verify; filter and picker forms are skipped |
 | Words | "Oops", "Something went wrong", OK/Submit/Yes/No as labels, `N/A` for a missing value (not as an answer option), server errors or JSON shown to users |
-| Dates | one-off date formats instead of the shared one |
+| Dates | one-off date formats instead of the shared one, on screens and in the scripts that build PDFs and prints (dates sent to the server are skipped) |
+| Support text | a person's email address in a message, ERP shorthand ("Svc. Doc.", "nbr.") or placeholders like `<NEW>` |
+| Unused parts | components and functions no screen uses: listed once as cleanup, and not reviewed |
 | Messages | an error shown only in a toast that disappears |
 | Actions | more than two bottom buttons that can show at the same time (buttons that swap by step are counted per step) (`references/actions-layout.md`) |
 | Custom parts | custom components and hand-built layouts to compare with the native look on a device (`references/custom-components.md`) |
-| Numbers | a number field with a fixed default that typing appends to |
+| Numbers | a number field with a fixed default that typing appends to (not hidden fields) |
 | Icons | old Streamline names, `-filled` names, unknown names. Icons that come from data are left to the icon-migration skill |
 
 For a spelling pass, `ux-lint.mjs --strings` lists every text a user can see, with

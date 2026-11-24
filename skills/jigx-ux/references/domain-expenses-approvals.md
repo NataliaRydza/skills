@@ -8,11 +8,15 @@ right project or job, and submit it without retyping it.
 **Flow:** + Expense → camera → (auto-fill where available) → confirm fields → save as
 draft → add to a report or submit.
 
-- **Open straight to the camera** from "Add expense". The receipt is the first
-  thing captured, and "Enter manually" is the fallback.
+- **Receipt first.** The receipt photo is the first field on the Add form, not the last.
+  That is a cheap change. Opening straight to the camera ("Enter manually" as the
+  fallback) is the fuller version.
 - **Save immediately.** The expense exists as a draft with its photo even if the
   details aren't complete. Never block saving on OCR or upload, which may not run
-  offline.
+  offline. When the ERP needs several fields before it accepts a receipt (Acumatica
+  does), a true draft needs a "not ready to send" state that sync skips until the
+  fields are filled. That is a large change, so propose it separately from moving the
+  photo field.
 - **Default category, project, job and payment method** from the current context
   (opened from a project or appointment) or the last entry.
 - **Fields:** date (today), amount and currency, merchant, category, project/job,

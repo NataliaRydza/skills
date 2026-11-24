@@ -36,20 +36,24 @@ whole solution. Both flags work for `ux-lint.mjs` and `propose.mjs`.
 | Code | What it suggests |
 | --- | --- |
 | `missing-title` | Full screen without a title |
-| `missing-header` | Default/list screen without a header image. Skipped when every way into the screen is a modal (`isModal: true`) or another screen's bottom sheet |
+| `missing-header` | Full screen (list, menu, home or form) without a header image (a header with only buttons doesn't count). Skipped when every way into the screen is a modal (`isModal: true`) or another screen's bottom sheet. When no screen has one, it is proposed as one app-wide decision |
 | `destructive-swipe-without-confirm` | Delete/Remove swipe with no "are you sure?", directly or in the shared actions it calls. Says when it deletes on the server |
 | `destructive-icon-mismatch` / `destructive-color` | Delete shown with a pencil icon or a non-negative colour |
-| `sync-state-negative` | "Local / not synced" tag coloured red |
+| `sync-state-negative` | "Not synced", "Pending ..." or "Edited" tag coloured red |
+| `sync-tag-colours` | Sync tags that mean "waiting to upload" (Not synced, Edited, Pending ...) in different colours, or one tag in different colours on two screens. The proposal shows every sync tag with its colour. Colours set by an expression are listed but not compared |
 | `discard-alert-off` | Discard warning hard-disabled on a form with typed fields. A form that saves only with a button is a warning (pop-ups too). When every typed field saves itself (`onChange`), it is info and needs verification. Filter and picker forms are skipped; forms embedded in a hub screen are usually intentional |
 | `generic-copy` / `generic-label` | "Oops", "Something went wrong", OK/Submit/Yes/No. The proposal quotes each message and how often it appears, so one copied template shows up as one fix |
 | `na-literal` | `'N/A'` possibly shown for a missing value. Not flagged when N/A is an answer option (`{"value":"N/A"}`) or a stored answer it is compared with |
-| `hardcoded-date-format` | One-off date/time format instead of the shared one |
+| `hardcoded-date-format` | One-off date/time format instead of the shared one, including `$fromMillis` pictures and dates cut from ISO text (`$substringBefore(date, 'T')`). Also checks the scripts in `scripts/` (often PDFs and prints): `toLocaleDateString()`, fixed locales, hand-built dates |
+| `email-in-text` | An email address in a message users see (usually a person's). The fix is a better message first, then the customer's helpdesk from a setting, not a Jigx or team address |
+| `erp-wording` | ERP shorthand (`Svc.`, `Doc.`, `nbr.`), `' || '` separators or `<NEW>` placeholders in labels and values |
+| `unused-part` | A component, function or shared action nothing in use refers to. Its other findings are left out; propose removing it as cleanup |
 | `raw-error-text` / `raw-json` | Error value or stringified record shown to the user (an error used only in a condition, `.error ? "Error" : ...`, is not flagged). Errors from a response or the sync queue are system errors; errors set by the app (jig state, inputs, a component) need verification of where the text is written |
 | `icon-from-data` | Icons from data. Not proposed: the icon-migration skill owns these (its fromData list) |
 | `error-in-toast` | An error shown only in a disappearing toast |
-| `too-many-actions` | More than two bottom buttons that can show at the same time. Buttons whose conditions rule each other out (`step=1` / `step=2`) are not counted together. A warning when two always show; when it depends on data, info and needs verification. Write the state table (`actions-layout.md`) |
+| `too-many-actions` | More than two bottom buttons that can show at the same time. Buttons whose conditions rule each other out (`step=1` / `step=2`, or `X` and `$not(X)`, also through the jig's `expressions:`) are not counted together. A warning when two always show; when it depends on data, info and needs verification. Write the state table (`actions-layout.md`) |
 | `custom-layout` | Custom component or hand-built layout. Compare with the native look on a device (`custom-components.md`) |
-| `prefilled-number-default` | A number field with a fixed default that typing appends to (1 + "2" = 12) |
+| `prefilled-number-default` | A number field with a fixed default that typing appends to (1 + "2" = 12). Hidden or disabled fields are skipped |
 
 For spelling and wording, list every literal text the user can see and read it
 through (typos, plurals, internal names, inconsistent terms):
@@ -132,7 +136,10 @@ approves (`change-proposals.md`):
    of the fix) or **needs verification** (the source can't settle it: say what to check on a device, or add a "Decision needed" line). Drop a proposal when every
    place is intentional, raise or lower its severity when the source shows a different
    risk (for example a delete that goes to the server is High), and narrow the fix to
-   the real problem (quote the message that has to change).
+   the real problem (quote the message that has to change). The lint's severity is
+   only a starting point: set the final one from the severity table above. Most
+   findings from reading the screens (wrong sync colours, actions greyed out with no
+   reason, ERP wording, placeholders shown as values) are Medium, not Low.
 3. Add walkthrough findings under "Manual findings", using the severity table above.
 4. Hand the file to the owner, and implement only what they approve.
 

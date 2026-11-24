@@ -17,14 +17,22 @@ function blockOf(lines, start) {
 }
 
 const DESTRUCTIVE_LABEL = /^\s*-\s*label:\s*['"]?(delete|remove|discard|clear)\b/i;
-const GENERIC_COPY = /\b(oops|something went wrong|an error occurred|error occurred)\b/i;
+const GENERIC_COPY = /\b(oops|something went wrong|an error occurred|error occurred|screenshot and email)\b/i;
 const GENERIC_BUTTON = /^\s*(title|confirm|cancel):\s*['"]?(ok|submit|yes|no)['"]?\s*$/i;
 const NA_LITERAL = /'N\/A'|"N\/A"/;
 // N/A as a choice (`{"value":"N/A"}`, `value: N/A`) or a stored answer compared against.
 const NA_ANSWER = /["']?(value|label|id)["']?\s*:\s*["']N\/A["']|[\w)\]'"]\s*!?=\s*["']N\/A["']|["']N\/A["']\s*!?=\s*[\w@$(]/;
 const DATE_FORMAT = /^\s*format:\s*['"]?[^'"\n{]*(YYYY|DD[./-]|MM[./-]|HH:mm|hh:mm)/;
-const DATE_PICTURE = /\$fromMillis\([^)]*,\s*['"]\[/;
-const SYNC_WORDS = /\b(local|not synced|unsynced|pending sync|waiting to sync|offline)\b/i;
+const DATE_PICTURE = /\$fromMillis\(.*,\s*['"]\[[A-Za-z]/;
+// A date cut out of an ISO string ("2026-11-24T10:00" -> "2026-11-24") shows the raw format.
+// Dates formatted in expression scripts (often PDFs and prints): the phone's own format, a
+// fixed locale, or a date built by hand. Money (`number.toLocaleString`) is left alone.
+const SCRIPT_DATE = /toLocale(Date|Time)String\(|Intl\.DateTimeFormat|new Date\([^)]*\)\.toLocaleString\(|toLocaleString\([^)]*(dateStyle|timeStyle|weekday|month:)|\.format\(\s*['"][^'"]*(YYYY|DD|MM)/;
+const ISO_SLICE = /\$substringBefore\([^,]+,\s*['"]T['"]\)|\$substring\([^,]*date[^,]*,\s*0\s*,\s*10\)/i;
+const SYNC_WORDS = /\b(local|not synced|unsynced|pending|waiting to sync|edited|offline)\b/i;
+const EMAIL = /[\w.+-]+@(?!ctx\.)[\w-]+(\.[\w-]+)*\.[a-z]{2,}\b/i;
+// ERP shorthand and internal placeholders in labels: "Svc. Doc.", "nbr.", " || ", "<NEW>".
+const ERP_WORDING = /\b(nbr|svc|doc|desc|ref|cd)\.(?=[\s'"]|$)|['"]\s*\|\|\s*['"]|<NEW>/i;
 const RAW_ERROR = /^\s*(title|subtitle|description|text|value):\s*=.*\.(errorMessage|error|exception|stack|responseBody|response)\b/;
 const RAW_JSON = /^\s*(title|subtitle|description|text|value):\s*=\s*\$string\(@ctx\.(current\.item|datasources\.[\w-]+)\)\s*$/;
 const DATA_ICON = /^\s*icon:\s*['"]?=.*@ctx\.(current\.item|datasources)/;
@@ -39,6 +47,7 @@ const cleanTitle = (value) => value.trim().replace(/^['"]|['"]$/g, '').replace(/
 // The bottom action groups of a jig: top-level `actions:` -> `- children:` -> `- type: action.*`.
 // Returns each group's buttons with their title and whether they are only shown in some states.
 export function bottomActions(lines) {
+  const exprs = jigExpressions(lines);
   const top = lines.findIndex((l) => /^actions:\s*$/.test(l));
   if (top < 0) return [];
   const block = blockOf(lines, top);
@@ -72,7 +81,7 @@ export function bottomActions(lines) {
       };
       const when = own('when', c + 2);
       const hidden = own('isHidden', c + 4);
-      const shownIf = when ?? (hidden?.match(/^\$not\((.*)\)$/)?.[1] ?? (hidden ? '?' : null));
+      const shownIf = shownConditions(when, hidden, exprs);
       buttons.push({line: k, title: title || lines[k].trim().replace(/^-\s*type:\s*/, ''), conditional: shownIf !== null, shownIf});
     }
     const before = lines.slice(block.start, i).reverse().find((l) => /numberOfVisibleActions:/.test(l));
@@ -82,31 +91,93 @@ export function bottomActions(lines) {
   return groups;
 }
 
-// The parts of a condition joined by a top-level `and` (none when it has a top-level `or`).
-function conjuncts(expr) {
+// Split a condition on a top-level `and` / `or` (outside brackets and quotes).
+function splitTop(expr, word) {
   const parts = [];
   let depth = 0, from = 0, quote = null;
+  const sep = new RegExp(`^\\s${word}\\s`);
   for (let i = 0; i < expr.length; i++) {
     const ch = expr[i];
     if (quote) { if (ch === quote) quote = null; continue; }
     if (ch === '"' || ch === "'") quote = ch;
     else if (ch === '(') depth++;
     else if (ch === ')') depth--;
-    else if (depth === 0 && /^\s(and|or)\s/.test(expr.slice(i, i + 5))) {
-      if (expr.slice(i + 1, i + 3) === 'or') return [];
+    else if (depth === 0 && sep.test(expr.slice(i, i + word.length + 2))) {
       parts.push(expr.slice(from, i).trim());
-      from = i + 4;
+      from = i + word.length + 2;
     }
   }
   parts.push(expr.slice(from).trim());
-  return parts.map((p) => p.replace(/^\((.*)\)$/, '$1').replace(/\s+/g, ''));
+  return parts;
+}
+
+// The inside of `prefix(...)` when the brackets wrap the whole text.
+function wrapped(s, prefix = '') {
+  if (!s.startsWith(`${prefix}(`) || !s.endsWith(')')) return null;
+  let depth = 0;
+  for (let i = prefix.length; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')' && --depth === 0 && i < s.length - 1) return null;
+  }
+  return s.slice(prefix.length + 1, -1);
+}
+
+// Whitespace and outer brackets removed, `$not($not(X))` -> X, so equal conditions compare equal.
+function normCond(c) {
+  let s = c.replace(/\s+/g, '');
+  for (let k = 0; k < 6; k++) {
+    const inner = wrapped(s);
+    if (inner !== null) { s = inner; continue; }
+    const not = wrapped(s, '$not');
+    const twice = not !== null ? wrapped(normCond(not), '$not') : null;
+    if (twice !== null) { s = twice; continue; }
+    if (not !== null) { s = `$not(${normCond(not)})`; break; }
+    break;
+  }
+  return s;
+}
+
+// The parts of a condition joined by a top-level `and` (none when it has a top-level `or`).
+function conjuncts(expr) {
+  if (splitTop(expr, 'or').length > 1) return [];
+  return splitTop(expr, 'and').map(normCond);
+}
+
+// What must be true for a button to show, from `when` or from `isHidden` (`A or B` hidden
+// means `$not(A)` and `$not(B)` shown). Jig-level `@ctx.expressions.x` are filled in.
+function shownConditions(when, hidden, exprs) {
+  const fill = (e) => {
+    for (let k = 0; k < 3; k++) e = e.replace(/@ctx\.expressions\.([\w-]+)/g, (m, name) => (exprs.has(name) ? `(${exprs.get(name)})` : m));
+    return e;
+  };
+  if (when) return conjuncts(fill(when));
+  if (!hidden) return null;
+  const h = fill(hidden);
+  const inner = wrapped(h.replace(/\s+/g, ''), '$not');
+  if (inner !== null) return conjuncts(inner);
+  return splitTop(h, 'or').map((part) => normCond(`$not(${part})`));
+}
+
+// Jig-level `expressions:` (name -> expression without the leading =).
+function jigExpressions(lines) {
+  const map = new Map();
+  const top = lines.findIndex((l) => /^expressions:\s*$/.test(l));
+  if (top < 0) return map;
+  const block = blockOf(lines, top);
+  for (let i = top + 1; i < block.end; i++) {
+    const m = lines[i].match(/^ {2}([\w-]+):\s*(.*)$/);
+    if (!m) continue;
+    let value = m[2];
+    for (let n = i + 1; n < block.end && indentOf(lines[n]) > 2; n++) value += ` ${lines[n].trim()}`;
+    map.set(m[1], value.replace(/^[|>]-?\s*/, '').replace(/^=/, '').trim());
+  }
+  return map;
 }
 
 // Two buttons can't show together when their conditions need different values of the same
 // thing (`step=1` and `step=2`, `step>1` and `step=1`), or `X` and `$not(X)`.
-function exclusive(a, b) {
-  if (!a || !b || a === '?' || b === '?') return false;
-  const ca = conjuncts(a), cb = conjuncts(b);
+function exclusive(ca, cb) {
+  if (!ca?.length || !cb?.length) return false;
   const cmp = (c) => c.match(/^(.+?)(>=|<=|!=|=|>|<)(['"]?[\w.-]+['"]?)$/);
   for (const x of ca) for (const y of cb) {
     if (x === `$not(${y})` || y === `$not(${x})`) return true;
@@ -163,11 +234,18 @@ export function hasUnconditionalConfirm(text) {
   });
 }
 
+// A header with an image (a header can also just hold buttons).
+function hasHeaderImage(text) {
+  const lines = text.split(/\r?\n/);
+  const top = lines.findIndex((l) => /^header:/.test(l));
+  return top >= 0 && /component\.image\b|\buri:|\bsource:/.test(blockOf(lines, top).text);
+}
+
 const jigName = (file) => path.basename(file).replace(/\.jigx$/, '');
 
 // Cross-file facts the line checks need: shared actions by name, and jigs that are only
 // ever opened as a modal (every go-to that links to them sets isModal: true) or in a bottom sheet.
-export function solutionContext(files) {
+export function solutionContext(files, extra = []) {
   const actions = new Map();
   const links = new Map();
   for (const {file, text} of files) {
@@ -195,7 +273,29 @@ export function solutionContext(files) {
     }
   }
   const modalOnly = new Set([...links].filter(([, l]) => l.all > 0 && l.modal === l.all).map(([name]) => name));
-  return {actions, modalOnly};
+  const anyHeader = files.some(({file, text}) => /(^|\/)jigs\//.test(file) && hasHeaderImage(text));
+  return {actions, modalOnly, anyHeader, unused: unusedFiles(files, extra)};
+}
+
+const SHARED_PART = /(^|\/)(components|functions|actions)\//;
+
+// Components, functions and shared actions that nothing in use refers to (dead code). Screens,
+// datasources, index.jigx and any non-YAML files (`extra`, e.g. scripts) count as in use.
+export function unusedFiles(files, extra = []) {
+  const byName = new Map();
+  for (const f of files) if (SHARED_PART.test(f.file)) byName.set(jigName(f.file), [...(byName.get(jigName(f.file)) ?? []), f]);
+  const used = new Set();
+  const queue = [...files.filter((f) => !SHARED_PART.test(f.file)), ...extra];
+  while (queue.length) {
+    const f = queue.shift();
+    const self = f.file ? jigName(f.file) : null;
+    for (const token of new Set(f.text.replace(/^\s*#.*$/gm, '').match(/[\w-]+/g) ?? [])) {
+      if (token === self || used.has(token) || !byName.has(token)) continue;
+      used.add(token);
+      queue.push(...byName.get(token));
+    }
+  }
+  return new Set(files.filter((f) => SHARED_PART.test(f.file) && !used.has(jigName(f.file))).map((f) => f.file));
 }
 
 // An error value used only in a condition (`.error ? "Error" : ...`) is not shown to the user.
@@ -220,7 +320,8 @@ function excerptOf(lines, i) {
   return text.length > 110 ? `${text.slice(0, 107)}...` : text;
 }
 
-export function lintSource(text, file = '<source>', ctx = {actions: new Map(), modalOnly: new Set()}) {
+export function lintSource(text, file = '<source>', ctx = {}) {
+  ctx = {actions: new Map(), modalOnly: new Set(), anyHeader: true, unused: new Set(), ...ctx};
   const findings = [];
   const lines = text.split(/\r?\n/);
   const add = (code, index, message, severity = 'warning', extra = {}) =>
@@ -230,8 +331,10 @@ export function lintSource(text, file = '<source>', ctx = {actions: new Map(), m
   const jigType = text.match(/^type:\s*(jig\.[\w-]+)/m)?.[1];
   if (jigType) {
     if (!/^title:/m.test(text)) add('missing-title', 0, 'Full screens need a title naming what the user sees (core rule 1.1).');
-    if (/^jig\.(default|list)$/.test(jigType) && !/^header:/m.test(text) && !isModalOnly)
-      add('missing-header', 0, 'Default/list screens need a small header image unless used as a bottom sheet or modal (core rule 1.2).', 'info');
+    // Full screens (lists, menus, home, forms) get one; bottom sheets and pop-ups don't.
+    if (/^jig\.(default|list)$/.test(jigType) && !hasHeaderImage(text) && !isModalOnly)
+      add('missing-header', 0, ctx.anyHeader ? 'Full screen without the small header image other screens have (core rule 1.2).'
+        : 'No screen in the app has a header image; decide once for the whole app whether full screens get one (core rule 1.2).', 'info', ctx.anyHeader ? {} : {appWide: true});
   }
 
   for (const group of bottomActions(lines)) {
@@ -257,6 +360,7 @@ export function lintSource(text, file = '<source>', ctx = {actions: new Map(), m
   }
 
   let dataIconReported = false;
+  let lastGeneric = -10;
   lines.forEach((line, i) => {
     if (/^\s*#/.test(line)) return;
 
@@ -280,7 +384,7 @@ export function lintSource(text, file = '<source>', ctx = {actions: new Map(), m
       }
     }
 
-    if (GENERIC_COPY.test(line))
+    if (GENERIC_COPY.test(line) && i - lastGeneric > 3 && (lastGeneric = i) >= 0)
       add('generic-copy', i, 'Say what happened and what to do, in neutral words (feedback-and-sync.md section 3).', 'warning', {excerpt: excerptOf(lines, i)});
     if (GENERIC_BUTTON.test(line))
       add('generic-label', i, 'Use a specific verb that names the outcome instead of OK/Submit/Yes/No (core rule 2.3).', 'info');
@@ -288,8 +392,18 @@ export function lintSource(text, file = '<source>', ctx = {actions: new Map(), m
     if (NA_LITERAL.test(line) && !NA_ANSWER.test(line))
       add('na-literal', i, "If 'N/A' is shown for a missing value, hide the row instead (core rule 1.4). Ignore when it is a real answer option.", 'info');
 
-    if (DATE_FORMAT.test(line) || DATE_PICTURE.test(line))
-      add('hardcoded-date-format', i, "Dates/times should follow the solution's shared display format (core rule 1.5).", 'info');
+    // Only dates users see: not in functions/actions/datasources, not variables (`$x :=`),
+    // ERP fields (`TranDate:`) or ISO dates built for a query or the server.
+    const forServer = /(^|\/)(functions|actions|datasources|databases)\//.test(file) || /:=/.test(line) || /^\s*-?\s*"?[A-Z]\w*"?\s*:/.test(line)
+      || /['"]\[Y(0001)?\]-\[M01\]-\[D01\](T[^'"]*)?['"]|['"]\[M01\]-?\[Y0001\]['"]/.test(line);
+    if (!forServer && (DATE_FORMAT.test(line) || DATE_PICTURE.test(line) || ISO_SLICE.test(line)))
+      add('hardcoded-date-format', i, "Dates/times should follow the solution's shared display format (core rule 1.5).", 'warning');
+
+    if (EMAIL.test(line) && (STRING_KEYS.test(line) || !/^\s*-?\s*[\w-]+:/.test(line)))
+      add('email-in-text', i, "An email address is shown to users. Use a team support address or a support action, never a person's address (feedback-and-sync.md section 3).", 'warning', {excerpt: line.match(EMAIL)[0]});
+
+    if (ERP_WORDING.test(line) && (STRING_KEYS.test(line) || /^\s*initialValue:/.test(line)) && !/[!=]=?\s*['"]<NEW>|<NEW>['"]\s*!?=/.test(line))
+      add('erp-wording', i, 'ERP shorthand or an internal placeholder in text users see; use plain words (core rule 1.6).', 'info', {excerpt: excerptOf(lines, i)});
 
     if (RAW_ERROR.test(line) && rendersErrorValue(line)) {
       // From a response or the sync queue it is a system error. From jig state, inputs or a
@@ -348,17 +462,101 @@ export function lintSource(text, file = '<source>', ctx = {actions: new Map(), m
     if (/^\s*-?\s*type:\s*component\.number-field\b/.test(line)) {
       const block = blockOf(lines, i).text.split('\n');
       const def = block.findIndex((l) => NUMBER_DEFAULT.test(l));
-      if (def >= 0 && !/isTextClearedOnFocus:\s*true/.test(block.join('\n')))
+      // A hidden or disabled field is never typed in.
+      if (def >= 0 && !/isTextClearedOnFocus:\s*true/.test(block.join('\n')) && !/^\s*(isHidden|isDisabled):\s*true\b/m.test(block.join('\n')))
         add('prefilled-number-default', i + def, 'Number field starts with a fixed default; typing appends to it (1 + "2" = 12). Use isTextClearedOnFocus: true for defaults (core rule 4.9).', 'info');
     }
 
     if (/^\s*-\s*type:\s*action\.show-alert\b/.test(line)) {
       const block = blockOf(lines, i).text;
       if (/presentAs:\s*toast/.test(block) && /isNegative:\s*true/.test(block))
-        add('error-in-toast', i, 'Errors the user must act on should stay on screen (banner/modal), not in a disappearing toast (core rule 3.8).', 'info');
+        add('error-in-toast', i, 'Errors the user must act on should stay on screen (banner/modal), not in a disappearing toast (core rule 3.8).');
     }
   });
   return findings;
+}
+
+// Every sync-state tag in the app with its colour, sorted into "waiting" (uploads by itself)
+// and "problem" (the user must act). A colour set by an expression is listed as `expr`.
+const PROBLEM_WORDS = /\b(error|errors|failed|failure|needs correction|conflict|rejected)\b/i;
+export function syncTags(files) {
+  const tags = [];
+  for (const {file, text} of files) {
+    const lines = text.split(/\r?\n/);
+    lines.forEach((line, i) => {
+      if (!/^\s*-?\s*text:/.test(line)) return;
+      const window = lines.slice(i, i + 8);
+      const colorAt = window.findIndex((l, k) => k > 0 && /^\s*-?\s*(color|text):/.test(l));
+      if (colorAt < 0 || !/^\s*color:/.test(window[colorAt])) return;
+      const value = window[colorAt].replace(/^\s*color:\s*/, '').replace(/^['"]|['"]\s*$/g, '').trim();
+      const fixed = /^[\w-]+$/.test(value) ? value : null;
+      for (const m of window.slice(0, colorAt).join('\n').matchAll(/'([^'\n]{2,30})'|"([^"\n]{2,30})"/g)) {
+        const label = (m[1] ?? m[2]).trim();
+        if (/^[a-z_]+$/.test(label)) continue; // a data value ('failed'), not the text shown
+        const kind = PROBLEM_WORDS.test(label) ? 'problem' : SYNC_WORDS.test(label) && !/^(local|offline)$/i.test(label) ? 'waiting' : null;
+        if (kind) tags.push({label, kind, color: fixed ?? 'set by an expression (check on a device)', fixed: !!fixed, file, line: i + 1});
+      }
+    });
+  }
+  return tags;
+}
+
+// Waiting tags should share one calm colour, and a tag should look the same on every screen.
+// Only fixed colours are compared; colours set by an expression are listed in the table only.
+export function syncTagFindings(tags) {
+  const fixed = tags.filter((t) => t.fixed);
+  const colours = new Set(fixed.filter((t) => t.kind === 'waiting').map((t) => t.color));
+  const byLabel = new Map();
+  for (const t of fixed) byLabel.set(t.label.toLowerCase(), new Set([...(byLabel.get(t.label.toLowerCase()) ?? []), t.color]));
+  const table = [...new Map(tags.map((t) => [`${t.label.toLowerCase()}|${t.color}`, {label: t.label, kind: t.kind, color: t.color}])).values()];
+  return fixed.filter((t) => (t.kind === 'waiting' && colours.size > 1) || byLabel.get(t.label.toLowerCase()).size > 1).map((t) => ({
+    severity: 'warning', code: 'sync-tag-colours', file: t.file, line: t.line, tags: table,
+    message: `Sync tag "${t.label}" is ${t.color}; ${byLabel.get(t.label.toLowerCase()).size > 1 ? `the same tag is ${[...byLabel.get(t.label.toLowerCase())].filter((c) => c !== t.color).join(', ')} elsewhere` : `other waiting tags use ${[...colours].filter((c) => c !== t.color).join(', ')}`}. Give all waiting tags one calm colour and keep red for problems (core rule 1.7).`}));
+}
+
+// Expression scripts (`scripts/**/*.js|mjs|ts`): only the date check applies, because they
+// often build PDFs, prints and labels that must show dates like the screens do.
+export function lintScript(text, file = '<script>') {
+  if (/soap|rest|api|sync/i.test(path.basename(file))) return []; // builds server requests
+  const findings = [];
+  text.split(/\r?\n/).forEach((line, i) => {
+    if (/^\s*(\/\/|\*)/.test(line)) return;
+    const utc = /timeZone:\s*['"]UTC['"]/.test(line) ? ' It also uses timeZone UTC: check that users see their own local time.' : '';
+    if (SCRIPT_DATE.test(line)) findings.push({severity: 'warning', code: 'hardcoded-date-format', file, line: i + 1,
+      message: `Date formatted in a script (often a PDF or print) with its own format${/toLocale\w*\(\s*\)/.test(line) ? ", taken from the phone's settings" : ''}. Use the same shared format as the screens (core rule 1.5).${utc}`});
+    else if (/getMonth\(\)/.test(line) && /get(Date|FullYear)\(\)/.test(line) && /[\/.]\$\{|['"`][\/.]|[\/.]['"`]/.test(line)) findings.push({severity: 'info', code: 'hardcoded-date-format', file, line: i + 1,
+      message: 'Date built by hand in a script. Use the same shared format as the screens (core rule 1.5).', verify: 'if this date is sent to the server and never shown, mark it intentional'});
+  });
+  return findings;
+}
+
+function scriptSources(root) {
+  const out = [];
+  const visit = (dir, inScripts) => {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      if (['node_modules', 'build', 'tests', 'test', '__tests__'].includes(entry.name) || entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full, inScripts || entry.name === 'scripts');
+      else if (inScripts && /\.(js|mjs|ts)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) out.push({text: fs.readFileSync(full, 'utf8'), file: path.relative(root, full)});
+    }
+  };
+  visit(root, false);
+  return out;
+}
+
+// Non-YAML files that may refer to functions or components (scripts, JSON config).
+function extraSources(root) {
+  const out = [];
+  const visit = (dir) => {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.') || entry.name === 'build') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (/\.(js|mjs|ts|json)$/.test(entry.name) && !/^package(-lock)?\.json$/.test(entry.name)) out.push({text: fs.readFileSync(full, 'utf8')});
+    }
+  };
+  visit(root);
+  return out;
 }
 
 function eachSource(root, fn) {
@@ -394,11 +592,22 @@ export function flowFiles(files, start) {
 export function lintSolution(root, {only = [], flow} = {}) {
   const files = [];
   eachSource(root, (text, file) => files.push({text, file}));
-  const ctx = solutionContext(files);
+  const ctx = solutionContext(files, extraSources(root));
   const inFlow = flow ? flowFiles(files, flow) : null;
   const norm = (x) => x.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
   const picked = files.filter(({file}) => (!inFlow || inFlow.has(file)) && (!only.length || only.some((o) => norm(file) === norm(o) || norm(file).startsWith(`${norm(o)}/`))));
-  return picked.flatMap(({text, file}) => lintSource(text, file, ctx));
+  // Unused parts: no point reviewing their UX. Reported once each as a cleanup note.
+  // Scripts: in scope by folder (`only`), or when a screen of the flow calls one of their functions.
+  const flowText = inFlow ? picked.map((f) => f.text).join('\n') : '';
+  const scripts = scriptSources(root).filter(({text, file}) => {
+    if (inFlow) return [...text.matchAll(/export\s+(?:async\s+)?(?:function|const|let)\s+(\w+)/g)].some((m) => new RegExp(`\\b${m[1]}\\b`).test(flowText));
+    return !only.length || only.some((o) => norm(file) === norm(o) || norm(file).startsWith(`${norm(o)}/`));
+  });
+  const picks = new Set(picked.map((f) => f.file));
+  const tagFindings = syncTagFindings(syncTags(files.filter((f) => !ctx.unused.has(f.file)))).filter((f) => picks.has(f.file));
+  return [...tagFindings, ...picked.flatMap(({text, file}) => (ctx.unused.has(file)
+    ? [{severity: 'info', code: 'unused-part', file, line: 1, message: 'No screen, action or function in use refers to this file; remove it or leave it out of the review (cleanup).'}]
+    : lintSource(text, file, ctx))), ...scripts.flatMap(({text, file}) => lintScript(text, file))];
 }
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };

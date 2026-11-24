@@ -34,6 +34,10 @@ export const FIXES = {
     problem: 'Delete actions use the normal button colour.',
     why: 'Red warns that the action can\'t easily be undone. Without it, Delete looks like any other action.',
     fix: 'Use the red (negative) colour for delete actions.', effort: 'S'},
+  'sync-tag-colours': {title: 'Give sync tags one colour per meaning',
+    problem: 'Tags that all mean "waiting to upload" have different colours, or the same tag has a different colour on another screen (see the table).',
+    why: 'Users read colour first. Several colours for one situation look like several situations, and a red "waiting" tag looks like an error when nothing is wrong.',
+    fix: 'Give every "waiting, uploads by itself" tag one calm colour (for example grey or blue), keep red only for problems the user must act on, and use the same colour for a tag on every screen.', effort: 'S', check: true},
   'sync-state-negative': {title: 'Don\'t show "waiting to sync" in red',
     problem: 'Records that are saved on the phone but not yet sent are tagged in red, the same colour as errors.',
     why: 'Waiting to sync is normal, especially offline. Red makes users think something failed, so they redo work or call support.',
@@ -45,7 +49,7 @@ export const FIXES = {
   'generic-copy': {title: 'Make error and offline messages say what to do',
     problem: 'Messages like "Something went wrong" or "Oops" don\'t say what happened or what to do next.',
     why: 'Users can\'t fix the problem themselves, so they retry blindly, give up, or call support.',
-    fix: 'Say what happened and the next step, in plain words. For example: "You\'re offline. Refresh needs a connection; your changes are saved on this device."', effort: 'S'},
+    fix: 'Say what happened and the next step, in plain words. For example: "You\'re offline. Refresh needs a connection; your changes are saved on this device." Don\'t ask users to screenshot and email: if they need help, point to the customer\'s own helpdesk from a setting, or "contact your administrator".', effort: 'S'},
   'generic-label': {title: 'Use button labels that say what happens',
     problem: 'Buttons are labelled OK, Submit, Yes or No.',
     why: 'In a question like "Delete photo?", "Yes / No" makes the user read the question again. A label with the action can be tapped with confidence.',
@@ -57,7 +61,7 @@ export const FIXES = {
   'hardcoded-date-format': {title: 'Show dates and times the same way everywhere',
     problem: 'These screens use their own date or time format instead of the shared one.',
     why: 'The same date looks different from screen to screen, and some formats are wrong for the user\'s country (for example 03/04 read as March or April).',
-    fix: 'Use the solution\'s shared date and time format on these screens.', effort: 'M', check: true},
+    fix: 'Use the solution\'s shared date and time format on these screens, and in the scripts that build PDFs and prints, so a date looks the same on the screen and on paper.', effort: 'M', check: true},
   'raw-error-text': {title: 'Show errors in plain words',
     problem: 'The technical error from the server or ERP is shown to the user as it is.',
     why: 'Technical text means nothing to a field user and can expose internal details.',
@@ -90,11 +94,29 @@ export const FIXES = {
     problem: 'These screens have no title.',
     why: 'Without a title, users can lose track of where they are, especially after following a link.',
     fix: 'Add a title that names what is on the screen.', effort: 'S'},
-  'missing-header': {title: 'Add the header image to list screens',
-    problem: 'These screens have no header image, while other screens in the app do.',
+  'missing-header': {title: 'Add the header image to full screens',
+    problem: 'These screens (lists, menus, home or forms) have no header image, while other screens in the app do.',
     why: 'This is polish: the header shows which part of the app the user is in and keeps the app looking consistent.',
-    fix: 'Add the small header image for that area (not on bottom sheets or pop-ups).', effort: 'S', check: true},
+    fix: 'Add the small header image for that area, on forms too (not on bottom sheets or pop-ups).', effort: 'S', check: true},
+  'email-in-text': {title: "Don't show a person's email address in messages",
+    problem: 'Messages ask users to email a specific person (for example a developer\'s address).',
+    why: 'People change jobs and inboxes fill up, so users end up writing to nobody. It also exposes a personal address to every customer user.',
+    fix: 'First rewrite the message so it says what the user can do now (retry, or that the data is saved and will sync). If a contact is still needed, take it from a setting each customer fills in (their own helpdesk), or say "contact your administrator" when it is empty. Never a person\'s address, and not a Jigx address: the users work for the customer. A "Report a problem" action that sends the details itself is a larger, separate change.', effort: 'S'},
+  'erp-wording': {title: 'Use plain words instead of ERP shorthand',
+    problem: 'Labels and values use ERP shorthand or internal placeholders, such as "Related Svc. Doc. Type", "Appointment nbr.", " || " as a separator, or "<NEW>" as a number.',
+    why: 'Field users don\'t know the ERP\'s abbreviations. Placeholders like <NEW> look like a broken value.',
+    fix: 'Write labels out in plain words ("Service appointment"), use a normal separator ( · ), and show "Not sent yet" instead of a placeholder number.', effort: 'S', check: true},
+  'unused-part': {title: 'Remove parts no screen uses',
+    problem: 'These components, functions or actions are not used by any screen, so users never see them.',
+    why: 'They are not a UX problem, but they make the solution harder to read and they show up in every review.',
+    fix: 'Delete them, or keep them on purpose and leave them out of UX reviews. Check first that nothing outside the solution (another solution, a script) calls them.', effort: 'S', check: true},
 };
+
+// When no screen in the app has a header image, it is one app-wide decision, not a fix per screen.
+const APP_WIDE_HEADER = {title: 'Decide once whether the app uses header images',
+  problem: 'No screen in the app has a header image.',
+  why: 'Headers show which part of the app the user is in. This is a choice for the whole app, not a fix screen by screen.',
+  fix: 'Decide for the whole app. If yes, add the small header image to the full screens below: lists, menus, home and forms (not bottom sheets or pop-ups). If no, reject this proposal.', effort: 'S', check: false};
 
 // Owned by the icon-migration skill (its fromData list), so not proposed here.
 const LEFT_TO_ICON_MIGRATION = new Set(['icon-from-data']);
@@ -110,14 +132,16 @@ export function buildProposals(lintFindings, icons) {
     g.places.push(place);
     // The lint can't decide this one from the source alone (it depends on data or on where a value is set).
     if (f.verify) g.verify[place] = f.verify;
+    if (f.tags) g.tags = f.tags;
     if (f.excerpt) g.messages.set(f.excerpt, (g.messages.get(f.excerpt) ?? 0) + 1);
     groups.set(f.code, g);
   }
   const proposals = [...groups.values()].map((g) => {
-    const meta = FIXES[g.code] ?? {title: g.code, fix: 'Review and fix.', effort: 'S', check: true};
+    const appWide = g.code === 'missing-header' && lintFindings.some((f) => f.code === 'missing-header' && f.appWide);
+    const meta = appWide ? {...FIXES[g.code], ...APP_WIDE_HEADER} : FIXES[g.code] ?? {title: g.code, fix: 'Review and fix.', effort: 'S', check: true};
     return {source: `ux-lint:${g.code}`, severity: g.severity, title: meta.title, problem: meta.problem, why: meta.why, fix: meta.fix, effort: meta.effort,
       check: !!meta.check, rule: lintFindings.find((f) => f.code === g.code)?.message.match(/\(([^)]*rule[^)]*)\)/)?.[1] ?? '', places: g.places,
-      messages: [...g.messages].map(([text, count]) => ({text, count})).sort((a, b) => b.count - a.count), verify: g.verify};
+      messages: [...g.messages].map(([text, count]) => ({text, count})).sort((a, b) => b.count - a.count), verify: g.verify, tags: g.tags};
   });
   if (icons?.status === 'needs-migration') {
     const names = [...icons.legacy.map((l) => `${l.name} → ${l.suggested}`), ...icons.unknown.map((u) => `${u.name} → (needs a choice)`)];
@@ -156,6 +180,13 @@ export function renderMarkdown({solution, date, proposals, notes = []}) {
       out.push(`- **Messages found (${p.messages.length}):**`);
       for (const m of p.messages.slice(0, 10)) out.push(`  - "${m.text}" (${m.count} ${m.count === 1 ? 'place' : 'places'})`);
     }
+    if (p.tags?.length) {
+      out.push('- **Sync tags in the app:**', '', '  | Tag | Means | Colour today |', '  | --- | --- | --- |');
+      const rows = new Map();
+      for (const t of p.tags) { const k = t.label.toLowerCase(); rows.set(k, {...t, colors: [...new Set([...(rows.get(k)?.colors ?? []), t.color])]}); }
+      for (const t of [...rows.values()].sort((a, b) => b.kind.localeCompare(a.kind) || a.label.localeCompare(b.label))) out.push(`  | ${t.label} | ${t.kind === 'waiting' ? 'waiting, uploads by itself' : 'problem, the user must act'} | ${t.colors.join(' / ')} |`);
+      out.push('');
+    }
     out.push(`- **Where it happens (${p.places.length}):**`);
     for (const place of p.places.slice(0, 40)) out.push(`  - ${place} · ${p.verify?.[place] ? `needs verification: ${p.verify[place]}` : 'not checked yet'}`);
     if (p.places.length > 40) out.push(`  - ... ${p.places.length - 40} more (run the script with --json for all)`);
@@ -169,7 +200,15 @@ export function renderMarkdown({solution, date, proposals, notes = []}) {
 // ~/jigx-ux-reviews/<solution>/<branch>/ux-proposals.md, so nothing lands in the repo.
 function defaultOut(project, solution, scope = {}) {
   let branch = 'no-git';
-  try { branch = execFileSync('git', ['-C', project, 'rev-parse', '--abbrev-ref', 'HEAD'], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim(); } catch {}
+  const git = (...args) => execFileSync('git', ['-C', project, ...args], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']}).trim();
+  try { branch = git('rev-parse', '--abbrev-ref', 'HEAD'); } catch {}
+  // A detached worktree (how USAGE.md reviews another branch): use the branch whose tip it is, or the short SHA.
+  if (branch === 'HEAD') {
+    try {
+      const names = git('branch', '-a', '--points-at', 'HEAD', '--format=%(refname:short)').split('\n').filter((b) => b && !/HEAD|^\(/.test(b));
+      branch = names.find((b) => b.startsWith('origin/'))?.replace(/^origin\//, '') ?? names[0] ?? git('rev-parse', '--short', 'HEAD');
+    } catch { branch = 'detached'; }
+  }
   const part = [scope.flow, ...(scope.only ?? [])].filter(Boolean).map((x) => path.basename(x)).join('-');
   return path.join(os.homedir(), 'jigx-ux-reviews', solution, branch.replace(/[^\w.-]+/g, '-'), `ux-proposals${part ? `-${part.replace(/[^\w.-]+/g, '-')}` : ''}.md`);
 }

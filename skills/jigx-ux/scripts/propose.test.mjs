@@ -72,3 +72,9 @@ test('every lint code has a proposed fix', async () => {
     for (const key of ['title', 'problem', 'why', 'fix']) assert.ok(FIXES[code][key], `${code} has no ${key}`);
   }
 });
+
+test('missing header with no header image anywhere becomes one app-wide decision', () => {
+  const [p] = buildProposals([{severity: 'info', code: 'missing-header', file: 'jigs/a.jigx', line: 1, message: 'x (core rule 1.2).', appWide: true}], null);
+  assert.match(p.title, /Decide once/);
+  assert.match(p.problem, /No screen in the app/);
+});

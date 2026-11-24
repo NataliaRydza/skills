@@ -52,6 +52,12 @@ runtime supports them (see `yaml-patterns.md`).
 - **Be specific, not generic.** Avoid "Something went wrong" and "Error occurred".
   If the cause is unknown, say what didn't happen and what the user can do (retry,
   contact the office).
+- **Don't hand support work to the user.** No "take a screenshot and email ...", and
+  never a person's email address. The app's users work for the customer, so help
+  comes from the customer's own helpdesk: take that contact from a setting the
+  customer fills in, or say "contact your administrator" when there is none. A
+  "Report a problem" action that sends the details (error, record, sync state) itself
+  is better still.
 - **Keep the tone neutral.** No blame ("You entered an invalid value") and no jokes.
   "Please" and "Sorry" add length, not clarity.
 - **Keep it short.** A title of a few words, plus one or two sentences of description.

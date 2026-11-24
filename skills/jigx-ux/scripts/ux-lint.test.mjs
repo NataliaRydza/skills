@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {lintSource, solutionContext, hasUnconditionalConfirm, flowFiles, scopeArgs} from './ux-lint.mjs';
+import {lintSource, solutionContext, hasUnconditionalConfirm, flowFiles, scopeArgs, unusedFiles, lintScript, syncTags, syncTagFindings} from './ux-lint.mjs';
 
 const codes = (text) => lintSource(text).map((f) => f.code);
 
 test('screen without title or header is reported', () => {
   assert.deepEqual(codes('type: jig.default\nchildren: []\n'), ['missing-title', 'missing-header']);
-  assert.deepEqual(codes('title: Photos\ntype: jig.default\nheader:\n  type: component.jig-header\n'), []);
+  const img = 'header:\n  type: component.jig-header\n  options:\n    children:\n      type: component.image\n';
+  assert.deepEqual(codes(`title: Photos\ntype: jig.default\n${img}`), []);
+  assert.deepEqual(codes('title: Photos\ntype: jig.default\nheader:\n  type: component.jig-header\n  options:\n    actions: []\n'), ['missing-header'], 'a header with only buttons has no image');
+  assert.deepEqual(codes('title: Add\ntype: jig.default\nchildren:\n  - type: component.form\n'), ['missing-header'], 'full-screen forms need a header image too');
   assert.deepEqual(codes('title: Notes\ntype: jig.full-screen\n'), []);
 });
 
@@ -222,4 +225,73 @@ test('screens shown in a bottom sheet count as modal', () => {
   const host = {file: 'jigs/host.jigx', text: 'title: Host\nbottomSheet:\n  children:\n    - jigId: qty-editor\n      inputs:\n        id: =1\n'};
   const {modalOnly} = solutionContext([host]);
   assert.ok(modalOnly.has('qty-editor'));
+});
+
+test('Expenses feedback: hidden fields, negated expressions, dates, sync words, emails, ERP words', () => {
+  const hidden = ['- type: component.number-field', '  options:', '    initialValue: 0', '    isHidden: true'].join('\n');
+  assert.deepEqual(codes(hidden), []);
+  const jig = ['title: Edit', 'type: jig.default', 'header:', '  type: component.jig-header', '  options:', '    children:', '      type: component.image',
+    'expressions:', '  editDisabled: =@ctx.solution.state.off', '  editEnabled: =$not(@ctx.solution.state.off)',
+    'actions:', '  - children:',
+    '      - type: action.go-to', '        options:', '          title: Edit', '          isHidden: |', '            =@ctx.expressions.deleted or @ctx.expressions.editEnabled',
+    '      - type: action.go-to', '        options:', '          title: Save', '          isHidden: =@ctx.expressions.deleted or @ctx.expressions.editDisabled',
+    '      - type: action.go-to', '        options:', '          title: Retry', '          isHidden: =$not(@ctx.expressions.hasError)'].join('\n');
+  assert.deepEqual(lintSource(jig).filter((f) => f.code === 'too-many-actions'), [], 'Edit and Save exclude each other');
+  assert.deepEqual(codes("    text: =$fromMillis($toMillis(@ctx.current.item.d), '[M01]-[D01]-[Y01] [h01]:[m01] [P]')"), ['hardcoded-date-format']);
+  assert.deepEqual(codes("    text: ='Claimed on: ' & $substringBefore(@ctx.current.item.Date.value, 'T')"), ['hardcoded-date-format']);
+  assert.deepEqual(codes('    value: =$fromMillis($toMillis($now()), "[Y0001]-[M01]-[D01]", @ctx.system.timezone.offset)'), [], 'an ISO date for the server');
+  assert.deepEqual(codes("      $cutoff := $fromMillis($toMillis($now()), '[D01]/[M01]')"), [], 'a variable');
+  assert.deepEqual(lintSource("    text: =$fromMillis(1, '[D01]/[M01]')", 'functions/rest-x.jigx').map((f) => f.code), [], 'functions talk to the server');
+  assert.deepEqual(codes("- text: =@ctx.current.item.LocalDeleted ? 'Pending delete' : ''\n  color: negative"), ['sync-state-negative']);
+  assert.deepEqual(codes('    description: Please screenshot and email support').sort(), ['generic-copy']);
+  assert.deepEqual(codes('      Please email to someone@example.com').sort(), ['email-in-text']);
+  assert.deepEqual(codes('    value: =@ctx.datasources.x.id'), []);
+  assert.deepEqual(codes('    label: Related Svc. Doc. Type'), ['erp-wording']);
+  assert.deepEqual(codes("    when: =@ctx.current.item.ReceiptID != '<NEW>'"), []);
+});
+
+test('unused components and functions are reported once, not reviewed', () => {
+  const files = [
+    {file: 'index.jigx', text: 'tabs:\n  home:\n    jigId: home\n'},
+    {file: 'jigs/home.jigx', text: 'title: Home\naction: act-load\n'},
+    {file: 'actions/act-load.jigx', text: 'function: rest-get\n'},
+    {file: 'functions/rest-get.jigx', text: 'x: 1\n'},
+    {file: 'functions/rest-old.jigx', text: 'title: Oops\n# rest-get\n'},
+    {file: 'components/old-card.jigx', text: 'componentId: list-error\n'},
+    {file: 'components/list-error.jigx', text: 'x: 1\n'},
+  ];
+  assert.deepEqual([...unusedFiles(files)].sort(), ['components/list-error.jigx', 'components/old-card.jigx', 'functions/rest-old.jigx']);
+  assert.deepEqual([...unusedFiles(files, [{text: 'call("rest-old")'}])].sort(), ['components/list-error.jigx', 'components/old-card.jigx'], 'scripts count as use');
+});
+
+test('dates formatted in scripts (PDFs, prints) are reported, money and server requests are not', () => {
+  const src = [
+    'export function printDate(d) { return new Date(d).toLocaleDateString(); }',
+    "const t = new Date(v).toLocaleString('en-GB', {timeZone: 'UTC', dateStyle: 'medium'});",
+    "const m = amount.toLocaleString('en-US', {minimumFractionDigits: 2});",
+    'const s = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;',
+    "const iso = `${d.getFullYear()}-${d.getMonth() + 1}`;",
+  ].join('\n');
+  const f = lintScript(src, 'scripts/expressions/print.js');
+  assert.deepEqual(f.map((x) => [x.line, x.severity]), [[1, 'warning'], [2, 'warning'], [4, 'info']]);
+  assert.match(f[0].message, /phone's settings/);
+  assert.match(f[1].message, /UTC/);
+  assert.ok(f[2].verify);
+  assert.deepEqual(lintScript(src, 'scripts/expressions/rentalReturnSoap.js'), []);
+});
+
+test('waiting sync tags with different colours, and one tag coloured differently on two screens', () => {
+  const tag = (label, color) => `  - text: =@ctx.current.item.data.x ? '${label}' : ''\n    color: ${color}\n`;
+  const files = [
+    {file: 'jigs/a.jigx', text: tag('Pending delete', 'negative') + tag('Edited', 'warning') + tag('Needs correction', 'negative')},
+    {file: 'jigs/b.jigx', text: tag('Needs correction', 'negative') + "  - text: =$x ? 'failed' : 'Not Synced'\n    color: |\n      =$x ? 'color2' : 'primary'\n"},
+  ];
+  const tags = syncTags(files);
+  assert.deepEqual(tags.map((t) => [t.label, t.kind, t.fixed]), [['Pending delete', 'waiting', true], ['Edited', 'waiting', true], ['Needs correction', 'problem', true], ['Needs correction', 'problem', true], ['Not Synced', 'waiting', false]]);
+  const f = syncTagFindings(tags);
+  assert.deepEqual(f.map((x) => `${x.file}:${x.line}`), ['jigs/a.jigx:1', 'jigs/a.jigx:3'], 'only the two waiting tags with fixed, different colours');
+  assert.equal(f[0].tags.length, 4);
+  const same = syncTagFindings(syncTags([{file: 'a', text: tag('Not Synced', 'warning')}, {file: 'b', text: tag('Not Synced', 'primary')}]));
+  assert.equal(same.length, 2);
+  assert.match(same[0].message, /primary elsewhere/);
 });
